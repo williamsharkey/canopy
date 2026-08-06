@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Symmetric Tensile Canopy Generator</title>
+    <style>
+        body { margin: 0; overflow: hidden; font-family: monospace; background: #111; color: #eee; }
+        canvas { display: block; }
+        #ui {
+            position: absolute; top: 15px; left: 15px;
+            background: rgba(20, 20, 20, 0.9);
+            padding: 15px; border: 1px solid #444; border-radius: 6px;
+            width: 320px; max-height: 90vh; overflow-y: auto;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+        }
+        h3 { margin: 0 0 10px 0; font-size: 14px; text-transform: uppercase; color: #88ccff; }
+        .input-group { display: flex; gap: 5px; margin-bottom: 10px; }
+        .input-group input { width: 100%; background: #333; color: #fff; border: 1px solid #555; padding: 4px; }
+        button {
+            background: #444; color: #fff; border: 1px solid #666;
+            padding: 5px 10px; cursor: pointer; width: 100%;
+        }
+        button:hover { background: #555; }
+        table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 12px; }
+        th, td { border: 1px solid #444; padding: 4px; text-align: center; }
+        .del-btn { background: #633; border-color: #844; padding: 2px 6px; }
+    </style>
+    <script src="../vendor/three.min.js"></script>
+    <script src="../vendor/OrbitControls.js"></script>
+    <script src="../vendor/delaunator.min.js"></script>
+</head>
+<body>
+    <div id="ui">
+        <h3>Canopy Control Nodes</h3>
+        <p style="font-size: 11px; color: #aaa; margin-top:0;">Offsets are from home corners. A 3x3 grid of 100x100 homes (800 spacing) is rendered.</p>
+        <div class="input-group">
+            <div><label>dx</label><input type="number" id="inp-dx" value="400"></div>
+            <div><label>dy (Height)</label><input type="number" id="inp-dy" value="250"></div>
+            <div><label>dz</label><input type="number" id="inp-dz" value="400"></div>
+        </div>
+        <button onclick="addPoint()">Add Symmetric Node</button>
+
+        <table id="point-table">
+            <thead><tr><th>dx</th><th>dy</th><th>dz</th><th>X</th></tr></thead>
+            <tbody id="point-body"></tbody>
+        </table>
+    </div>
+
+    <script>
+        // --- SCENE SETUP ---
+        const scene = new THREE.Scene();
+        scene.fog = new THREE.Fog(0x111111, 1000, 4000);
+        const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 10000);
+        camera.position.set(1200, 800, 1500);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setClearColor(0x111111);
+        document.body.appendChild(renderer.domElement);
+
+        const controls = new THREE.OrbitControls(camera, renderer.domElement);
+        controls.target.set(900, 0, 900);
+        controls.update();
+
+        // --- LIGHTING ---
+        const ambient = new THREE.AmbientLight(0x404040);
+        scene.add(ambient);
+        const dirLight = new THREE.DirectionalLight(0xffffff, 0.8);
+        dirLight.position.set(1000, 2000, 500);
+        scene.add(dirLight);
+
+        // --- CONSTANTS ---
+        const HOME_SIZE = 100;
+        const HOME_HEIGHT = 50;
+        const HOME_SPACING = 800;
+        const GRID_PITCH = HOME_SIZE + HOME_SPACING; // 900
+        const GRID_SIZE = 3; // 3x3 grid
+
+        // --- RENDER HOMES ---
+        const homeGeo = new THREE.BoxGeometry(HOME_SIZE, HOME_HEIGHT, HOME_SIZE);
+        const homeMat = new THREE.MeshStandardMaterial({ color: 0x884433, roughness: 0.9 });
+
+        for(let i = 0; i < GRID_SIZE; i++) {
+            for(let j = 0; j < GRID_SIZE; j++) {
+                const home = new THREE.Mesh(homeGeo, homeMat);
+                home.position.set(i * GRID_PITCH, HOME_HEIGHT / 2, j * GRID_PITCH);
+                scene.add(home);
+            }
+        }
+
+        // --- STATE & UI LOGIC ---
+        let userPoints = []; // Stores {dx, dy, dz}
+        let canopyMesh = null;
+        let wireframeMesh = null;
+
+        function updateTable() {
+            const tbody = document.getElementById('point-body');
+            tbody.innerHTML = '';
+            userPoints.forEach((pt, idx) => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${pt.dx}</td>
+                    <td>${pt.dy}</td>
+                    <td>${pt.dz}</td>
+                    <td><button class="del-btn" onclick="removePoint(${idx})">X</button></td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        window.addPoint = function() {
+            const dx = parseFloat(document.getElementById('inp-dx').value);
+            const dy = parseFloat(document.getElementById('inp-dy').value);
+            const dz = parseFloat(document.getElementById('inp-dz').value);
+            userPoints.push({ dx, dy, dz });
+            updateTable();
+            rebuildCanopy();
+        };
+
+        window.removePoint = function(idx) {
+            userPoints.splice(idx, 1);
+            updateTable();
+            rebuildCanopy();
+        };
+
+        // --- GENERATION LOGIC ---
+        function rebuildCanopy() {
+            if (canopyMesh) {
+                scene.remove(canopyMesh);
+                scene.remove(wireframeMesh);
+                canopyMesh.geometry.dispose();
+                wireframeMesh.geometry.dispose();
+            }
+
+            if (userPoints.length === 0) return;
+
+            const uniquePoints = new Map();
+
+            function addPt(x, y, z) {
+                uniquePoints.set(`${Math.round(x)},${Math.round(z)}`, {x, y, z});
+            }
+
+            for(let i = 0; i < GRID_SIZE; i++) {
+                for(let j = 0; j < GRID_SIZE; j++) {
+                    const cx = i * GRID_PITCH;
+                    const cz = j * GRID_PITCH;
+
+                    const signs = [[1,1], [1,-1], [-1,1], [-1,-1]];
+                    signs.forEach(s => {
+                        addPt(cx + 50*s[0], HOME_HEIGHT, cz + 50*s[1]);
+                    });
+
+                    userPoints.forEach(pt => {
+                        const px = 50 + pt.dx;
+                        const pz = 50 + pt.dz;
+
+                        signs.forEach(s => {
+                            addPt(cx + px * s[0], pt.dy, cz + pz * s[1]);
+                            addPt(cx + pz * s[0], pt.dy, cz + px * s[1]);
+                        });
+                    });
+                }
+            }
+
+            const pointsList = Array.from(uniquePoints.values());
+            const coords2D = [];
+            pointsList.forEach(p => {
+                coords2D.push(p.x, p.z);
+            });
+
+            const delaunay = new Delaunator(coords2D);
+            const indices = delaunay.triangles;
+
+            const geometry = new THREE.BufferGeometry();
+            const vertices = new Float32Array(pointsList.length * 3);
+
+            for(let i = 0; i < pointsList.length; i++) {
+                vertices[i*3] = pointsList[i].x;
+                vertices[i*3+1] = pointsList[i].y;
+                vertices[i*3+2] = pointsList[i].z;
+            }
+
+            geometry.setAttribute('position', new THREE.BufferAttribute(vertices, 3));
+            geometry.setIndex(new THREE.BufferAttribute(new Uint32Array(indices), 1));
+            geometry.computeVertexNormals();
+
+            const mat = new THREE.MeshStandardMaterial({
+                color: 0x2255aa,
+                side: THREE.DoubleSide,
+                transparent: true,
+                opacity: 0.8
+            });
+            const wireMat = new THREE.LineBasicMaterial({ color: 0x88ccff, transparent: true, opacity: 0.3 });
+
+            canopyMesh = new THREE.Mesh(geometry, mat);
+            scene.add(canopyMesh);
+
+            const wireGeo = new THREE.WireframeGeometry(geometry);
+            wireframeMesh = new THREE.LineSegments(wireGeo, wireMat);
+            scene.add(wireframeMesh);
+
+            window.__diag = {
+                points: pointsList.length,
+                tris: indices.length / 3,
+                sampleNormal: (() => {
+                    const n = geometry.attributes.normal;
+                    return [n.getX(0), n.getY(0), n.getZ(0)];
+                })()
+            };
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            controls.update();
+            renderer.render(scene, camera);
+        }
+
+        document.getElementById('inp-dx').value = 400;
+        document.getElementById('inp-dy').value = 250;
+        document.getElementById('inp-dz').value = 400;
+        addPoint();
+        animate();
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>

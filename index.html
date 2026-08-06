@@ -1,0 +1,2000 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agrivoltaic Canopy Generator</title>
+<style>
+  :root { --bg:#0d0f12; --panel:rgba(18,20,24,0.93); --line:#2c313a; --accent:#7cc4ff; --text:#dfe4ea; --dim:#8b939f; }
+  * { box-sizing: border-box; }
+  body { margin:0; overflow:hidden; font:12px/1.45 ui-monospace,Menlo,Consolas,monospace; background:var(--bg); color:var(--text); }
+  canvas { display:block; }
+
+  #ui {
+    position:absolute; top:12px; left:12px; width:330px; max-height:calc(100vh - 24px);
+    overflow-y:auto; background:var(--panel); border:1px solid var(--line); border-radius:8px;
+    padding:12px; box-shadow:0 8px 28px rgba(0,0,0,.6); backdrop-filter:blur(6px);
+  }
+  #ui::-webkit-scrollbar { width:8px; }
+  #ui::-webkit-scrollbar-thumb { background:#333a44; border-radius:4px; }
+
+  h1 { font-size:13px; margin:0 0 2px; letter-spacing:.08em; text-transform:uppercase; color:var(--accent); }
+  .sub { color:var(--dim); font-size:10.5px; margin:0 0 10px; }
+
+  fieldset { border:1px solid var(--line); border-radius:6px; margin:0 0 10px; padding:8px 9px 10px; }
+  legend { font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--accent); padding:0 5px; }
+
+  label { display:block; font-size:10.5px; color:var(--dim); margin-bottom:2px; }
+  .row { display:flex; gap:6px; align-items:flex-end; margin-bottom:7px; }
+  .row > div { flex:1; min-width:0; }
+  input[type=number], select {
+    width:100%; background:#181c22; color:var(--text); border:1px solid #39404b;
+    border-radius:4px; padding:4px 5px; font:inherit;
+  }
+  input[type=range] { width:100%; accent-color:var(--accent); }
+  input:focus, select:focus { outline:1px solid var(--accent); border-color:var(--accent); }
+  .invalid { border-color:#c0554b !important; }
+
+  button {
+    background:#232932; color:var(--text); border:1px solid #3c444f; border-radius:4px;
+    padding:5px 8px; cursor:pointer; font:inherit; width:100%;
+  }
+  button:hover { background:#2e3641; border-color:#4d5866; }
+  button.primary { background:#1e4a72; border-color:#2f6ea8; }
+  button.primary:hover { background:#245c8c; }
+  .btn-row { display:flex; gap:6px; }
+
+  table { width:100%; border-collapse:collapse; margin-top:6px; font-size:11px; }
+  th { color:var(--dim); font-weight:normal; font-size:10px; text-transform:uppercase; padding:3px 2px; border-bottom:1px solid var(--line); }
+  td { padding:2px; }
+  td input { padding:2px 3px; text-align:center; }
+  .del-btn { background:#3a2326; border-color:#5c3339; padding:2px 0; }
+  .del-btn:hover { background:#4d2c30; }
+
+  .toggles { display:flex; flex-wrap:wrap; gap:8px 12px; }
+  .toggles label { display:flex; align-items:center; gap:5px; margin:0; color:var(--text); font-size:11px; cursor:pointer; }
+  .toggles input { accent-color:var(--accent); }
+
+  #stats { display:grid; grid-template-columns:1fr auto; gap:1px 8px; font-size:11px; }
+  #stats .k { color:var(--dim); }
+  #stats .v { text-align:right; font-variant-numeric:tabular-nums; }
+
+  .sites { display:grid; grid-template-columns:1fr 1fr; gap:4px; }
+  .sites button { padding:4px 5px; font-size:10.5px; text-align:left; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .sites button.on { background:#1e4a72; border-color:#2f6ea8; color:#fff; }
+  #sitenote { color:var(--dim); font-size:10px; margin:6px 0 8px; min-height:14px; }
+
+  #legend { margin-top:7px; font-size:10.5px; display:none; }
+  #legend div { display:flex; align-items:center; gap:6px; padding:1px 0; }
+  #legend i { width:9px; height:9px; border-radius:2px; flex:none; }
+  #legend b { margin-left:auto; color:var(--dim); font-weight:normal; font-variant-numeric:tabular-nums; }
+
+  #msg { min-height:15px; font-size:10.5px; color:#e0b062; margin-top:6px; }
+  #hud {
+    position:absolute; bottom:12px; left:12px; color:var(--dim); font-size:10.5px;
+    background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:6px 9px;
+  }
+  .val { color:var(--accent); float:right; font-variant-numeric:tabular-nums; }
+  #loaderr { position:absolute; inset:0; display:none; place-items:center; text-align:center; padding:40px; color:#e08a7a; }
+</style>
+</head>
+<body>
+
+<div id="ui">
+  <h1>Agrivoltaic Canopy Generator</h1>
+  <p class="sub">Tensile canopy form-found over a grid of brick homes. Homes are the structural pylons; masts sit at the high points between them. Units = feet.</p>
+
+  <fieldset>
+    <legend>Site &amp; season</legend>
+    <div class="sites" id="site-btns"></div>
+    <div id="sitenote"></div>
+    <label>Season <span class="val" id="lbl-day">21 Jun</span></label>
+    <input type="range" id="cfg-day" min="1" max="365" step="1" value="172">
+  </fieldset>
+
+  <fieldset>
+    <legend>Neighborhood</legend>
+    <div class="row">
+      <div><label>Grid</label>
+        <select id="cfg-grid">
+          <option value="2">2 &times; 2</option>
+          <option value="3" selected>3 &times; 3</option>
+          <option value="4">4 &times; 4</option>
+          <option value="5">5 &times; 5</option>
+        </select>
+      </div>
+      <div><label>Pitch (ft)</label><input type="number" id="cfg-pitch" value="80" min="40" max="200" step="4"></div>
+      <div><label>Home (ft)</label><input type="number" id="cfg-home" value="32" min="12" max="60" step="4"></div>
+    </div>
+    <div class="row">
+      <div><label>Home height</label><input type="number" id="cfg-hh" value="21" min="8" max="45" step="1"></div>
+      <div><label>Mast top (anchor)</label><input type="number" id="cfg-mast" value="30" min="10" max="60" step="1"></div>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Canopy control nodes</legend>
+    <p class="sub" style="margin:0 0 7px">dx / dz are measured out from a home <b>corner</b>; dy is height above grade. Each node is mirrored 8 ways around every home.</p>
+    <div class="row">
+      <div><label>dx</label><input type="number" id="inp-dx" value="24" step="1"></div>
+      <div><label>dy (height)</label><input type="number" id="inp-dy" value="46" step="1"></div>
+      <div><label>dz</label><input type="number" id="inp-dz" value="24" step="1"></div>
+    </div>
+    <button class="primary" id="btn-add">Add symmetric node</button>
+    <table>
+      <thead><tr><th>dx</th><th>dy</th><th>dz</th><th style="width:24px"></th></tr></thead>
+      <tbody id="point-body"></tbody>
+    </table>
+    <div class="btn-row" style="margin-top:7px">
+      <button id="btn-preset-peak">Peak</button>
+      <button id="btn-preset-saddle">Saddle</button>
+      <button id="btn-clear">Clear</button>
+    </div>
+    <div id="msg"></div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Surface</legend>
+    <div class="row">
+      <div><label>Style</label>
+        <select id="cfg-style">
+          <option value="net" selected>Cable net</option>
+          <option value="fabric">Fabric / shade cloth</option>
+          <option value="none">Hidden</option>
+        </select>
+      </div>
+      <div><label>Mesh</label>
+        <select id="cfg-res">
+          <option value="4">Coarse</option>
+          <option value="2.5" selected>Medium</option>
+          <option value="1.5">Fine</option>
+        </select>
+      </div>
+    </div>
+    <label>Form-finding relaxation <span class="val" id="lbl-relax">300</span></label>
+    <input type="range" id="cfg-relax" min="0" max="800" step="25" value="300">
+    <label>Sag over the clear span <span class="val" id="lbl-sag">2.0 ft</span></label>
+    <input type="range" id="cfg-sag" min="0" max="12" step="0.5" value="2">
+    <label>Mast head Ø <span class="val" id="lbl-head">8 ft</span></label>
+    <input type="range" id="cfg-head" min="0" max="24" step="1" value="8">
+    <div class="toggles" style="margin-top:8px">
+      <label><input type="checkbox" id="cfg-controlnet"> Control net</label>
+      <label><input type="checkbox" id="cfg-masts" checked> Masts &amp; ties</label>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Solar / shade</legend>
+    <label>Panel coverage <span class="val" id="lbl-cov">50%</span></label>
+    <input type="range" id="cfg-cov" min="0" max="100" step="5" value="50">
+    <label>Panel size (ft) <span class="val" id="lbl-panel">8</span></label>
+    <input type="range" id="cfg-panel" min="4" max="16" step="2" value="8">
+    <label>Hour of day <span class="val" id="lbl-hour">13:00</span></label>
+    <input type="range" id="cfg-hour" min="6" max="19" step="0.05" value="13">
+    <div class="toggles" style="margin-top:8px">
+      <label><input type="checkbox" id="cfg-shadows" checked> Shadows</label>
+      <label><input type="checkbox" id="cfg-homes" checked> Homes</label>
+      <label><input type="checkbox" id="cfg-daycycle"> Run the day (15 s / hour)</label>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Sun map &amp; growth</legend>
+    <p class="sub" style="margin:0 0 7px">Sun per square foot, integrated over the whole day's sweep for this
+    latitude and season, then planted with whatever that light and moisture supports.</p>
+    <label>Irrigation <span class="val" id="lbl-water">30%</span></label>
+    <input type="range" id="cfg-water" min="0" max="100" step="5" value="30">
+    <div class="toggles" style="margin-top:8px">
+      <label><input type="checkbox" id="cfg-sunmap"> Sun map</label>
+      <label><input type="checkbox" id="cfg-growth" checked> Green ground</label>
+      <label><input type="checkbox" id="cfg-plants" checked> Planting</label>
+      <label><input type="checkbox" id="cfg-walls" checked> On homes</label>
+    </div>
+    <div id="legend"></div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Readout</legend>
+    <div id="stats"></div>
+  </fieldset>
+
+  <fieldset>
+    <legend>View &amp; export</legend>
+    <div class="btn-row" style="margin-bottom:6px">
+      <button id="v-over">Overview</button>
+      <button id="v-top">Plan</button>
+      <button id="v-street">Street</button>
+    </div>
+    <div class="btn-row">
+      <button id="btn-obj">Export .obj</button>
+      <button id="btn-json">Save .json</button>
+    </div>
+  </fieldset>
+</div>
+
+<div id="hud">drag = orbit &nbsp;|&nbsp; right-drag = pan &nbsp;|&nbsp; wheel = zoom</div>
+<div id="loaderr"></div>
+
+<script>
+// ---------------------------------------------------------------------------
+// Library loading: CDN first, local ./vendor copies as fallback (offline use).
+// ---------------------------------------------------------------------------
+const LIBS = [
+  ['https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js', 'vendor/three.min.js'],
+  ['https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js', 'vendor/OrbitControls.js'],
+  ['https://unpkg.com/delaunator@5.0.0/delaunator.min.js', 'vendor/delaunator.min.js'],
+];
+
+function loadScript(src) {
+  return new Promise((res, rej) => {
+    const s = document.createElement('script');
+    s.src = src; s.onload = res; s.onerror = () => rej(new Error(src));
+    document.head.appendChild(s);
+  });
+}
+
+(async function boot() {
+  for (const [cdn, local] of LIBS) {
+    try { await loadScript(cdn); }
+    catch (e) {
+      try { await loadScript(local); }
+      catch (e2) {
+        const el = document.getElementById('loaderr');
+        el.style.display = 'grid';
+        el.textContent = 'Could not load ' + cdn + ' (and no local copy at ' + local + ').';
+        return;
+      }
+    }
+  }
+  init();
+})();
+</script>
+
+<script>
+// ===========================================================================
+//  Model
+// ===========================================================================
+
+// Live configuration, all lengths in feet.
+const CFG = {
+  grid: 3,        // homes per side
+  pitch: 80,      // home centre to home centre
+  home: 32,       // home footprint (square)
+  homeH: 21,      // roof height (2 storeys + parapet)
+  mast: 30,       // top of the corner tubing = canopy anchor height
+  res: 2.5,       // membrane mesh spacing
+  relax: 300,     // form-finding iterations
+  sag: 2,         // sag depth (ft) the self weight produces over one clear span
+  head: 8,        // diameter of the spreader plate at a high point
+  style: 'net',
+  coverage: 0.5,
+  panel: 8,
+  hour: 13,
+  dayCycle: false,  // advance the hour in real time instead of by hand
+  site: 0,          // index into SITES
+  day: 172,         // day of year (21 Jun)
+  water: 0.30,      // irrigation, 0..1 on top of what the sky delivers
+  sunmap: false,    // draw the insolation heat map on the ground
+  plants: true,     // grow what the light and moisture support
+  growth: true,     // tint the ground by how much growth it supports
+  wallPlants: true, // extend planting to roofs and walls
+  shadows: true,
+  homes: true,
+  controlNet: false,
+  masts: true,
+};
+
+// Ten arid places where this kind of shaded, irrigated block is either being
+// built or actively proposed. lat/lon in degrees (+N / +E); rain is the annual
+// mean in mm — between them they set the sun path and the water budget.
+const SITES = [
+  { name: 'Ouarzazate, MA',   lat:  30.9, lon:   -6.9, rain: 120, note: "Sahara's north edge; the Noor solar complex is next door." },
+  { name: 'Niamey, NE',       lat:  13.5, lon:    2.1, rain: 540, note: 'Sahel, on the Great Green Wall line. Wet season, high sun.' },
+  { name: 'Turkana, KE',      lat:   3.1, lon:   36.1, rain: 200, note: 'Equatorial: the sun barely tilts, so season changes little.' },
+  { name: 'Jodhpur, IN',      lat:  26.3, lon:   73.0, rain: 360, note: 'Thar desert. Monsoon-fed, then eight dry months.' },
+  { name: 'Kubuqi, CN',       lat:  40.4, lon:  108.5, rain: 250, note: 'Inner Mongolia; the largest desert-greening scheme running.' },
+  { name: 'Tabuk, SA',        lat:  28.4, lon:   36.6, rain:  40, note: 'North-west Arabia. Almost no rain — shade is the whole crop.' },
+  { name: 'Phoenix, US',      lat:  33.4, lon: -112.1, rain: 200, note: 'Sonoran. Summer heat, not light, is the binding limit.' },
+  { name: 'Almería, ES',      lat:  36.8, lon:   -2.4, rain: 200, note: "Tabernas — Europe's only desert, already under plastic." },
+  { name: 'Calama, CL',       lat: -22.5, lon:  -68.9, rain:   5, note: 'Atacama: the driest ground and the hardest sun on Earth.' },
+  { name: 'Alice Springs, AU',lat: -23.7, lon:  133.9, rain: 280, note: 'Red Centre. Southern hemisphere — the seasons run backwards.' },
+];
+
+// Control nodes, offsets measured out from a home corner.
+let nodes = [{ dx: 24, dy: 46, dz: 24 }];
+
+let scene, camera, renderer, controls, sun, sunTarget, hemi;
+let gHomes, gCanopy, gPanels, gStruct, gNet, gPlants, gHeat, gGrowth, ground;
+let surface = null;   // last form-found grid
+let panelVerts = null;// module corners, 12 floats each: what casts the shade
+let sunRun = null;    // in-flight insolation job, pumped by the frame loop
+let buildSeq = 0;     // bumped on every rebuild; the headless tests wait on it
+
+// ---------------------------------------------------------------------------
+// Derived geometry helpers
+// ---------------------------------------------------------------------------
+const half = () => CFG.home / 2;
+const span = () => (CFG.grid - 1) * CFG.pitch;          // outer home centres
+const centre = () => span() / 2;
+
+function homeCentres() {
+  const out = [];
+  for (let i = 0; i < CFG.grid; i++)
+    for (let j = 0; j < CFG.grid; j++)
+      out.push([i * CFG.pitch, j * CFG.pitch]);
+  return out;
+}
+
+// Signed distance-ish test: is (x,z) inside a home footprint (inflated by pad)?
+function insideHome(x, z, pad) {
+  const h = half() + (pad || 0);
+  for (let i = 0; i < CFG.grid; i++) {
+    const cx = i * CFG.pitch;
+    if (Math.abs(x - cx) > h) continue;
+    for (let j = 0; j < CFG.grid; j++) {
+      const cz = j * CFG.pitch;
+      if (Math.abs(z - cz) <= h) return true;
+    }
+  }
+  return false;
+}
+
+// ---------------------------------------------------------------------------
+// Control point cloud: home anchors + the 8-way mirrored user nodes.
+// Keyed on rounded (x,z); the highest value at a location wins, so an anchor
+// can never silently clobber a peak (or vice versa) depending on loop order.
+// ---------------------------------------------------------------------------
+function buildControlPoints() {
+  const map = new Map();
+  const put = (x, y, z) => {
+    const k = Math.round(x * 100) + ',' + Math.round(z * 100);
+    const prev = map.get(k);
+    if (!prev || y > prev.y) map.set(k, { x, y, z });
+  };
+
+  const signs = [[1, 1], [1, -1], [-1, 1], [-1, -1]];
+  let skipped = 0;
+
+  for (const [cx, cz] of homeCentres()) {
+    // Anchor ring: the four mast tops on the home's corners.
+    for (const s of signs) put(cx + half() * s[0], CFG.mast, cz + half() * s[1]);
+
+    for (const n of nodes) {
+      const px = half() + n.dx;
+      const pz = half() + n.dz;
+      for (const s of signs) {
+        for (const [a, b] of [[px, pz], [pz, px]]) {   // quadrants + diagonal flip
+          const x = cx + a * s[0], z = cz + b * s[1];
+          if (insideHome(x, z, -0.01)) { skipped++; continue; }
+          put(x, n.dy, z);
+        }
+      }
+    }
+  }
+  return { pts: [...map.values()], skipped };
+}
+
+// ---------------------------------------------------------------------------
+// Form finding.
+//
+// 1. Delaunay-triangulate the control points in plan and rasterise them onto a
+//    regular grid -> the faceted surface (this is what the original tool drew).
+// 2. Pin the control points and the home roof rings, then relax every free node
+//    toward the mean of its neighbours. Zero load gives a minimal surface, i.e.
+//    the soap-film saddle a prestressed membrane actually takes; the sag term
+//    adds uniform self weight.
+// ---------------------------------------------------------------------------
+function formFind(ctrl) {
+  let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+  for (const p of ctrl) {
+    if (p.x < minX) minX = p.x; if (p.x > maxX) maxX = p.x;
+    if (p.z < minZ) minZ = p.z; if (p.z > maxZ) maxZ = p.z;
+  }
+
+  const res = CFG.res;
+  const nx = Math.max(2, Math.round((maxX - minX) / res) + 1);
+  const nz = Math.max(2, Math.round((maxZ - minZ) / res) + 1);
+  const dx = (maxX - minX) / (nx - 1), dz = (maxZ - minZ) / (nz - 1);
+
+  const n = nx * nz;
+  const y = new Float32Array(n);
+  const active = new Uint8Array(n);   // 1 = part of the membrane
+  const pinned = new Uint8Array(n);
+
+  // --- rasterise the Delaunay net -----------------------------------------
+  const coords = new Float64Array(ctrl.length * 2);
+  for (let i = 0; i < ctrl.length; i++) { coords[i * 2] = ctrl[i].x; coords[i * 2 + 1] = ctrl[i].z; }
+  const tri = new Delaunator(coords).triangles;
+
+  for (let t = 0; t < tri.length; t += 3) {
+    const A = ctrl[tri[t]], B = ctrl[tri[t + 1]], C = ctrl[tri[t + 2]];
+    const det = (B.z - C.z) * (A.x - C.x) + (C.x - B.x) * (A.z - C.z);
+    if (Math.abs(det) < 1e-9) continue;
+
+    const i0 = Math.max(0, Math.floor((Math.min(A.x, B.x, C.x) - minX) / dx));
+    const i1 = Math.min(nx - 1, Math.ceil((Math.max(A.x, B.x, C.x) - minX) / dx));
+    const j0 = Math.max(0, Math.floor((Math.min(A.z, B.z, C.z) - minZ) / dz));
+    const j1 = Math.min(nz - 1, Math.ceil((Math.max(A.z, B.z, C.z) - minZ) / dz));
+
+    for (let j = j0; j <= j1; j++) {
+      const pz = minZ + j * dz;
+      for (let i = i0; i <= i1; i++) {
+        const px = minX + i * dx;
+        const l1 = ((B.z - C.z) * (px - C.x) + (C.x - B.x) * (pz - C.z)) / det;
+        if (l1 < -1e-6) continue;
+        const l2 = ((C.z - A.z) * (px - C.x) + (A.x - C.x) * (pz - C.z)) / det;
+        if (l2 < -1e-6) continue;
+        const l3 = 1 - l1 - l2;
+        if (l3 < -1e-6) continue;
+        const k = j * nx + i;
+        active[k] = 1;
+        y[k] = l1 * A.y + l2 * B.y + l3 * C.y;
+      }
+    }
+  }
+
+  // --- holes over the homes, pinned ring on the roof edge ------------------
+  const inside = new Uint8Array(n);
+  for (let j = 0; j < nz; j++) {
+    const pz = minZ + j * dz;
+    for (let i = 0; i < nx; i++) {
+      if (insideHome(minX + i * dx, pz, 0)) inside[j * nx + i] = 1;
+    }
+  }
+  for (let j = 0; j < nz; j++) {
+    for (let i = 0; i < nx; i++) {
+      const k = j * nx + i;
+      if (!inside[k]) continue;
+      const edge =
+        i === 0 || i === nx - 1 || j === 0 || j === nz - 1 ||
+        !inside[k - 1] || !inside[k + 1] || !inside[k - nx] || !inside[k + nx];
+      if (edge) { active[k] = 1; pinned[k] = 1; y[k] = CFG.mast; }   // perimeter beam
+      else active[k] = 0;                                            // opening
+    }
+  }
+
+  // --- pin the control points ---------------------------------------------
+  // A high point is carried on a spreader plate, not a needle, so pin a small
+  // disc of nodes: a single pinned node just produces a spike no fabric holds.
+  const head = Math.max(res * 0.6, CFG.head / 2);
+  const rad = Math.ceil(head / Math.min(dx, dz));
+  for (const p of ctrl) {
+    const ci = Math.round((p.x - minX) / dx), cj = Math.round((p.z - minZ) / dz);
+    for (let j = cj - rad; j <= cj + rad; j++) {
+      if (j < 0 || j >= nz) continue;
+      for (let i = ci - rad; i <= ci + rad; i++) {
+        if (i < 0 || i >= nx) continue;
+        const ex = (minX + i * dx) - p.x, ez = (minZ + j * dz) - p.z;
+        if (ex * ex + ez * ez > head * head) continue;
+        const k = j * nx + i;
+        if (!active[k]) continue;
+        pinned[k] = 1; y[k] = p.y;
+      }
+    }
+  }
+
+  // --- relaxation ----------------------------------------------------------
+  // Free nodes move to the mean of their neighbours (a minimal surface, i.e.
+  // the soap film an evenly prestressed membrane finds) minus a uniform load.
+  // The load is expressed as a sag depth in feet over one clear span, so the
+  // result is independent of mesh resolution and of the site dimensions.
+  const L = Math.max(res * 4, CFG.pitch - CFG.home);
+  const load = 2 * CFG.sag * res * res / (L * L);
+  const omega = 1.85;   // over-relaxation: ~400 sweeps then behaves like ~3000
+  for (let it = 0; it < CFG.relax; it++) {
+    for (let j = 0; j < nz; j++) {
+      for (let i = 0; i < nx; i++) {
+        const k = j * nx + i;
+        if (!active[k] || pinned[k]) continue;
+        let s = 0, c = 0;
+        if (i > 0      && active[k - 1])  { s += y[k - 1];  c++; }
+        if (i < nx - 1 && active[k + 1])  { s += y[k + 1];  c++; }
+        if (j > 0      && active[k - nx]) { s += y[k - nx]; c++; }
+        if (j < nz - 1 && active[k + nx]) { s += y[k + nx]; c++; }
+        if (c) y[k] += omega * (s / c - load - y[k]);
+      }
+    }
+  }
+
+  return { y, active, pinned, nx, nz, dx, dz, minX, minZ, tri, ctrl };
+}
+
+// Bilinear sample of the form-found surface; null if any corner is an opening.
+function sampleSurface(s, x, z) {
+  const fi = (x - s.minX) / s.dx, fj = (z - s.minZ) / s.dz;
+  const i = Math.floor(fi), j = Math.floor(fj);
+  if (i < 0 || j < 0 || i >= s.nx - 1 || j >= s.nz - 1) return null;
+  const k = j * s.nx + i;
+  if (!s.active[k] || !s.active[k + 1] || !s.active[k + s.nx] || !s.active[k + s.nx + 1]) return null;
+  const u = fi - i, v = fj - j;
+  return (s.y[k] * (1 - u) + s.y[k + 1] * u) * (1 - v) +
+         (s.y[k + s.nx] * (1 - u) + s.y[k + s.nx + 1] * u) * v;
+}
+
+// ===========================================================================
+//  Mesh construction
+// ===========================================================================
+
+// Geometry only: every material in MAT is shared and outlives the rebuild.
+function disposeGroup(g) {
+  g.traverse(o => { if (o.geometry) o.geometry.dispose(); });
+  g.clear();
+}
+
+// Membrane surface. Winding is chosen so face normals point up (+Y): for a
+// quad with i along +X and j along +Z, (a, c, b) gives an upward cross product.
+function buildMembrane(s) {
+  const pos = [], idx = [];
+  const map = new Int32Array(s.nx * s.nz).fill(-1);
+  let count = 0;
+  for (let j = 0; j < s.nz; j++) {
+    for (let i = 0; i < s.nx; i++) {
+      const k = j * s.nx + i;
+      if (!s.active[k]) continue;
+      map[k] = count++;
+      pos.push(s.minX + i * s.dx, s.y[k], s.minZ + j * s.dz);
+    }
+  }
+  for (let j = 0; j < s.nz - 1; j++) {
+    for (let i = 0; i < s.nx - 1; i++) {
+      const k = j * s.nx + i;
+      const a = map[k], b = map[k + 1], c = map[k + s.nx], d = map[k + s.nx + 1];
+      if (a < 0 || b < 0 || c < 0 || d < 0) continue;
+      idx.push(a, c, b, b, c, d);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  g.computeBoundingSphere();
+  return g;
+}
+
+// A sparse set of grid lines, drawn as the cable net.
+function buildCables(s) {
+  const step = Math.max(1, Math.round(8 / s.dx));
+  const pts = [];
+  const at = (i, j) => [s.minX + i * s.dx, s.y[j * s.nx + i], s.minZ + j * s.dz];
+  for (let j = 0; j < s.nz; j += step)
+    for (let i = 0; i < s.nx - 1; i++) {
+      const k = j * s.nx + i;
+      if (s.active[k] && s.active[k + 1]) pts.push(...at(i, j), ...at(i + 1, j));
+    }
+  for (let i = 0; i < s.nx; i += step)
+    for (let j = 0; j < s.nz - 1; j++) {
+      const k = j * s.nx + i;
+      if (s.active[k] && s.active[k + s.nx]) pts.push(...at(i, j), ...at(i, j + 1));
+    }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+  return g;
+}
+
+// Ordered dither: spreads coverage evenly instead of clumping it, which is what
+// "dappled" shade needs. Any coverage fraction stays uniformly distributed.
+const BAYER = [0,8,2,10, 12,4,14,6, 3,11,1,9, 15,7,13,5];
+
+// Height a module hangs at. Over open ground it follows the membrane; over a
+// home the membrane is an opening ringed by a pinned perimeter beam, so modules
+// span it flat at anchor height, hung off that ring.
+function panelHeight(s, x, z) {
+  const y = sampleSurface(s, x, z);
+  if (y !== null) return y;
+  // The pad picks up cells straddling the ring, where the bilinear sample has
+  // an inactive corner and gives up but the beam is right there.
+  return insideHome(x, z, s.dx + 0.1) ? CFG.mast : null;
+}
+
+function buildPanels(s) {
+  const p = CFG.panel;
+  const i0 = Math.floor(s.minX / p), i1 = Math.ceil((s.minX + (s.nx - 1) * s.dx) / p);
+  const j0 = Math.floor(s.minZ / p), j1 = Math.ceil((s.minZ + (s.nz - 1) * s.dz) / p);
+  const pos = [], nor = [], idx = [];
+  let vcount = 0, area = 0, planArea = 0, roofArea = 0, roofCount = 0;
+  const insetFrac = 0.06;   // gap between modules: lets wind pressure bleed through
+  const inset = p * insetFrac;
+  // The requested coverage is the shaded fraction of ground, so compensate for
+  // the gaps when deciding how many cells to fill.
+  const fill = Math.min(1, CFG.coverage / Math.pow(1 - 2 * insetFrac, 2));
+
+  for (let j = j0; j < j1; j++) {
+    for (let i = i0; i < i1; i++) {
+      const bi = ((i % 4) + 4) % 4, bj = ((j % 4) + 4) % 4;
+      if ((BAYER[bj * 4 + bi] + 0.5) / 16 >= fill) continue;
+
+      const x0 = i * p + inset, x1 = (i + 1) * p - inset;
+      const z0 = j * p + inset, z1 = (j + 1) * p - inset;
+      const c = [[x0, z0], [x1, z0], [x1, z1], [x0, z1]].map(([x, z]) => {
+        const y = panelHeight(s, x, z);
+        return y === null ? null : new THREE.Vector3(x, y, z);
+      });
+      if (c.some(v => v === null)) continue;
+      const onRoof = insideHome((x0 + x1) / 2, (z0 + z1) / 2, 0);
+
+      const n = new THREE.Vector3().subVectors(c[3], c[0]).cross(new THREE.Vector3().subVectors(c[1], c[0])).normalize();
+      if (n.y < 0) n.negate();
+      for (const v of c) { pos.push(v.x, v.y, v.z); nor.push(n.x, n.y, n.z); }
+      idx.push(vcount, vcount + 3, vcount + 1, vcount + 1, vcount + 3, vcount + 2);
+      vcount += 4;
+
+      const w = c[0].distanceTo(c[1]), h = c[0].distanceTo(c[3]);
+      area += w * h;
+      // Modules over a home shade its roof, not the ground, so they are counted
+      // apart: the "ground shaded" figure would otherwise overstate the dapple.
+      if (onRoof) { roofArea += (x1 - x0) * (z1 - z0); roofCount++; }
+      else planArea += (x1 - x0) * (z1 - z0);
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  g.setIndex(idx);
+  g.computeBoundingSphere();
+  return { geo: g, count: vcount / 4, area, planArea, roofArea, roofCount };
+}
+
+// ===========================================================================
+//  Scene assembly
+// ===========================================================================
+
+const MAT = {};
+
+// Procedural brick-and-window elevation, drawn once onto a canvas. Keeps the
+// tool a single self-contained file with no image assets to fetch.
+function elevationTexture(withDoor) {
+  const W = 512, H = 336;                 // 32 ft x 21 ft
+  const ft = W / 32;
+  const cv = document.createElement('canvas');
+  cv.width = W; cv.height = H;
+  const g = cv.getContext('2d');
+
+  g.fillStyle = '#6d4636'; g.fillRect(0, 0, W, H);          // mortar
+  const course = 4, brick = 13;
+  for (let y = 0, r = 0; y < H; y += course, r++) {
+    const off = (r % 2) * brick / 2;
+    for (let x = -brick; x < W; x += brick) {
+      const t = ((x * 7 + y * 13) % 11) / 11;
+      g.fillStyle = `rgb(${162 + t * 26 | 0},${104 + t * 22 | 0},${78 + t * 18 | 0})`;
+      g.fillRect(x + off + 0.7, y + 0.7, brick - 1.4, course - 1.4);
+    }
+  }
+
+  // Parapet band across the top.
+  g.fillStyle = '#b9ab97'; g.fillRect(0, 0, W, 3 * ft);
+  g.fillStyle = '#cbbfa9'; g.fillRect(0, 0, W, 0.5 * ft);
+
+  const opening = (xf, yf, wf, hf, door) => {
+    const x = xf * ft, y = H - (yf + hf) * ft, w = wf * ft, h = hf * ft;
+    g.fillStyle = '#8e8272'; g.fillRect(x - 3, y - 3, w + 6, h + 6);      // reveal
+    const grad = g.createLinearGradient(x, y, x, y + h);
+    grad.addColorStop(0, door ? '#4a3323' : '#7f9bb4');
+    grad.addColorStop(1, door ? '#33231a' : '#1d2b39');
+    g.fillStyle = grad; g.fillRect(x, y, w, h);
+    if (!door) {                                                          // glazing bar
+      g.fillStyle = '#8e8272';
+      g.fillRect(x + w / 2 - 1.5, y, 3, h);
+    }
+  };
+
+  for (const [x, w] of [[4, 6], [13, 6], [22, 6]]) {
+    if (withDoor && x === 13) opening(13.5, 0.5, 5, 8, true);
+    else opening(x, 4.5, w, 4.5, false);
+    opening(x, 13.5, w, 4.5, false);
+  }
+
+  const tex = new THREE.CanvasTexture(cv);
+  tex.anisotropy = 8;
+  return tex;
+}
+
+function makeMaterials() {
+  MAT.brick   = new THREE.MeshStandardMaterial({ map: elevationTexture(false), roughness: 0.95 });
+  MAT.front   = new THREE.MeshStandardMaterial({ map: elevationTexture(true), roughness: 0.95 });
+  MAT.roof    = new THREE.MeshStandardMaterial({ color: 0x8d8478, roughness: 0.9 });
+  MAT.ground  = new THREE.MeshStandardMaterial({ color: 0xc2a678, roughness: 1 });
+  MAT.steel   = new THREE.MeshStandardMaterial({ color: 0x9aa2ac, roughness: 0.45, metalness: 0.75 });
+  MAT.cable   = new THREE.LineBasicMaterial({ color: 0x9fd4ff, transparent: true, opacity: 0.55 });
+  MAT.tie     = new THREE.LineBasicMaterial({ color: 0x6f7d8c, transparent: true, opacity: 0.7 });
+  MAT.ctrlnet = new THREE.LineBasicMaterial({ color: 0xffb066, transparent: true, opacity: 0.5 });
+  MAT.panel   = new THREE.MeshStandardMaterial({ color: 0x16294a, roughness: 0.5, metalness: 0.22, side: THREE.DoubleSide });
+  MAT.net     = new THREE.MeshStandardMaterial({ color: 0x3d7fbf, transparent: true, opacity: 0.10, side: THREE.DoubleSide, depthWrite: false });
+  MAT.fabric  = new THREE.MeshStandardMaterial({ color: 0xd9d2c4, transparent: true, opacity: 0.62, side: THREE.DoubleSide, roughness: 0.95 });
+}
+
+function buildHomes() {
+  disposeGroup(gHomes);
+  if (!CFG.homes) return;
+  const box = new THREE.BoxGeometry(CFG.home, CFG.homeH, CFG.home);
+  for (const [cx, cz] of homeCentres()) {
+    const m = new THREE.Mesh(box, [MAT.brick, MAT.brick, MAT.roof, MAT.roof, MAT.front, MAT.brick]);
+    m.position.set(cx, CFG.homeH / 2, cz);
+    m.castShadow = m.receiveShadow = true;
+    gHomes.add(m);
+  }
+}
+
+function buildStructure(ctrl) {
+  disposeGroup(gStruct);
+  if (!CFG.masts) return;
+
+  // Corner tubing: roof level up to the canopy anchor.
+  const len = Math.max(0.5, CFG.mast - CFG.homeH);
+  const tube = new THREE.CylinderGeometry(0.4, 0.4, len, 8);
+  for (const [cx, cz] of homeCentres()) {
+    for (const sx of [-1, 1]) for (const sz of [-1, 1]) {
+      const m = new THREE.Mesh(tube, MAT.steel);
+      m.position.set(cx + sx * half(), CFG.homeH + len / 2, cz + sz * half());
+      m.castShadow = true;
+      gStruct.add(m);
+    }
+  }
+
+  // High points get a ground-mounted mast; low points get a tie-down cable.
+  const mastGeo = new THREE.CylinderGeometry(0.55, 0.8, 1, 10);
+  const tiePts = [];
+  for (const p of ctrl) {
+    if (insideHome(p.x, p.z, 0)) continue;
+    if (p.y > CFG.mast + 0.5) {
+      const m = new THREE.Mesh(mastGeo, MAT.steel);
+      m.position.set(p.x, p.y / 2, p.z);
+      m.scale.y = p.y;
+      m.castShadow = true;
+      gStruct.add(m);
+    } else if (p.y < CFG.mast - 0.5) {
+      tiePts.push(p.x, p.y, p.z, p.x, 0, p.z);
+    }
+  }
+  if (tiePts.length) {
+    const g = new THREE.BufferGeometry();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(tiePts, 3));
+    gStruct.add(new THREE.LineSegments(g, MAT.tie));
+  }
+}
+
+function buildControlNetLines(s) {
+  const pts = [];
+  for (let t = 0; t < s.tri.length; t += 3) {
+    const A = s.ctrl[s.tri[t]], B = s.ctrl[s.tri[t + 1]], C = s.ctrl[s.tri[t + 2]];
+    pts.push(A.x, A.y, A.z, B.x, B.y, B.z, B.x, B.y, B.z, C.x, C.y, C.z, C.x, C.y, C.z, A.x, A.y, A.z);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
+  return new THREE.LineSegments(g, MAT.ctrlnet);
+}
+
+function rebuild() {
+  const t0 = performance.now();
+  const { pts: ctrl, skipped } = buildControlPoints();
+  const s = formFind(ctrl);
+  surface = s;
+
+  disposeGroup(gCanopy);
+  disposeGroup(gPanels);
+  disposeGroup(gNet);
+
+  // Membrane
+  const memGeo = buildMembrane(s);
+  let memArea = 0;
+  {
+    const p = memGeo.attributes.position, ix = memGeo.index.array;
+    const a = new THREE.Vector3(), b = new THREE.Vector3(), c = new THREE.Vector3();
+    for (let t = 0; t < ix.length; t += 3) {
+      a.fromBufferAttribute(p, ix[t]); b.fromBufferAttribute(p, ix[t + 1]); c.fromBufferAttribute(p, ix[t + 2]);
+      memArea += b.sub(a).cross(c.sub(a)).length() / 2;
+    }
+  }
+
+  window.__membrane = null;                    // test hook, see bottom of file
+  if (CFG.style !== 'none') {
+    const mesh = new THREE.Mesh(memGeo, CFG.style === 'fabric' ? MAT.fabric : MAT.net);
+    mesh.castShadow = CFG.style === 'fabric';
+    gCanopy.add(mesh);
+    window.__membrane = mesh;
+    if (CFG.style === 'net') gCanopy.add(new THREE.LineSegments(buildCables(s), MAT.cable));
+  } else {
+    memGeo.dispose();
+  }
+
+  if (CFG.controlNet) gNet.add(buildControlNetLines(s));
+
+  // Panels
+  const pan = buildPanels(s);
+  const pmesh = new THREE.Mesh(pan.geo, MAT.panel);
+  pmesh.castShadow = true;
+  gPanels.add(pmesh);
+  panelVerts = pan.geo.attributes.position.array;   // the insolation job reads this
+
+  buildHomes();
+  buildStructure(ctrl);
+  frameSun();
+
+  // ---- stats -------------------------------------------------------------
+  const blockW = span() + CFG.pitch;
+  const site = blockW * blockW;
+  let peak = -Infinity, low = Infinity;
+  for (const p of ctrl) { if (p.y > peak) peak = p.y; if (p.y < low) low = p.y; }
+  const kw = (pan.planArea + pan.roofArea) * 0.019;   // ~19 W/ft2 of module plan area
+
+  setStats({
+    'Homes': CFG.grid * CFG.grid,
+    'Site block': fmt(blockW) + ' × ' + fmt(blockW) + ' ft',
+    'Clear span': fmt(CFG.pitch - CFG.home) + ' ft',
+    'Anchor / peak': fmt(CFG.mast) + ' / ' + fmt(peak) + ' ft',
+    'Membrane area': fmt(Math.round(memArea)) + ' ft²',
+    'Modules': fmt(pan.count) + ' (' + fmt(pan.roofCount) + ' over homes)',
+    'Module area': fmt(Math.round(pan.area)) + ' ft²',
+    'Ground shaded': (100 * pan.planArea / site).toFixed(0) + '%',
+    'Array capacity': (kw > 999 ? (kw / 1000).toFixed(2) + ' MW' : Math.round(kw) + ' kW'),
+    'Mesh nodes': memGeo.attributes ? memGeo.attributes.position.count : 0,
+    'Build time': Math.round(performance.now() - t0) + ' ms',
+  });
+
+  msg(skipped ? skipped + ' mirrored point(s) landed on a roof and were dropped.' : '');
+  scheduleSunMap();
+
+  window.__diag = {
+    seq: ++buildSeq,
+    ctrl: ctrl.length, nodes: memGeo.attributes ? memGeo.attributes.position.count : 0,
+    panels: pan.count, roofPanels: pan.roofCount, peak, memArea, ms: performance.now() - t0,
+  };
+}
+
+function fmt(v) { return (Math.round(v * 10) / 10).toLocaleString(); }
+
+// Two writers: the rebuild fills in the geometry figures, the insolation job
+// adds its own later and must not wipe them out.
+let statsBase = {}, statsSun = {};
+function setStats(o) { statsBase = o; drawStats(); }
+function setSunStats(o) { statsSun = o; drawStats(); }
+function drawStats() {
+  document.getElementById('stats').innerHTML =
+    Object.entries(Object.assign({}, statsBase, statsSun))
+      .map(([k, v]) => `<div class="k">${k}</div><div class="v">${v}</div>`).join('');
+}
+function msg(t) { document.getElementById('msg').textContent = t; }
+
+// ---------------------------------------------------------------------------
+// Sun
+// ---------------------------------------------------------------------------
+// Built in init(): THREE is not defined until the loader resolves.
+let SKY_LOW, SKY_HIGH, sky;
+
+const HOUR_FIRST = 6, HOUR_LAST = 19;   // ends of the hour slider
+const HOUR_SECS = 15;                   // wall-clock seconds per simulated hour
+
+// The hour is a float, so rounding minutes can land on 60 — carry it.
+function hourLabel(v) {
+  let m = Math.round(v * 60);
+  const h = Math.floor(m / 60);
+  return h + ':' + String(m - h * 60).padStart(2, '0');
+}
+
+// Single place the hour changes: keeps CFG, the slider, the label and the light
+// in step whether the move came from a drag or from the day cycle.
+function setHour(v) {
+  CFG.hour = v;
+  document.getElementById('cfg-hour').value = v;
+  document.getElementById('lbl-hour').textContent = hourLabel(v);
+  frameSun();
+}
+
+// Called every frame while the day cycle runs. dt is seconds, already clamped.
+function advanceDay(dt) {
+  const len = HOUR_LAST - HOUR_FIRST;
+  let h = CFG.hour + dt / HOUR_SECS;
+  if (h >= HOUR_LAST) h = HOUR_FIRST + (h - HOUR_FIRST) % len;   // wrap to dawn
+  setHour(h);
+}
+
+const D2R = Math.PI / 180;
+
+// Scene compass: +X east, -Z north, so the plan view has north up and the noon
+// sun sits on +Z (south) in the northern hemisphere.
+//
+// Solar time, no longitude or equation-of-time correction: this is a shading
+// study, not an almanac, and both only slide the clock by minutes.
+function declination(day) { return 23.44 * D2R * Math.sin(2 * Math.PI * (284 + day) / 365); }
+
+function solarPos(lat, day, hour) {
+  const dec = declination(day), la = lat * D2R;
+  const H = (hour - 12) * 15 * D2R;                     // hour angle
+  const sinEl = Math.sin(la) * Math.sin(dec) + Math.cos(la) * Math.cos(dec) * Math.cos(H);
+  const el = Math.asin(Math.max(-1, Math.min(1, sinEl)));
+  const cosAz = (Math.sin(dec) - sinEl * Math.sin(la)) /
+                Math.max(1e-6, Math.cos(el) * Math.cos(la));
+  let az = Math.acos(Math.max(-1, Math.min(1, cosAz)));  // bearing from north
+  if (H > 0) az = 2 * Math.PI - az;                      // afternoon: west of north
+  return { el, az };
+}
+
+// Unit vector from the ground toward the sun, in scene axes.
+function sunVec(p) {
+  const c = Math.cos(p.el);
+  return { x: c * Math.sin(p.az), y: Math.sin(p.el), z: -c * Math.cos(p.az) };
+}
+
+// Half-day length in hours: 0 at polar night, 12 at polar day.
+function halfDay(lat, day) {
+  const c = -Math.tan(lat * D2R) * Math.tan(declination(day));
+  return (c <= -1 ? Math.PI : c >= 1 ? 0 : Math.acos(c)) / D2R / 15;
+}
+
+// Haurwitz clear sky, converted to watts per square foot of horizontal ground.
+function clearSky(sinEl) {
+  return sinEl <= 0.01 ? 0 : 1098 * sinEl * Math.exp(-0.057 / sinEl) * 0.092903;
+}
+
+function frameSun() {
+  const st = SITES[CFG.site];
+  const p = solarPos(st.lat, CFG.day, CFG.hour);
+  const v = sunVec(p);
+  const d = Math.max(300, span() * 1.6);
+  const c = centre();
+  sun.position.set(c + d * v.x, d * v.y + 20, c + d * v.z);
+  sunTarget.position.set(c, 0, c);
+
+  const r = span() * 0.85 + CFG.pitch;
+  const cam = sun.shadow.camera;
+  cam.left = -r; cam.right = r; cam.top = r; cam.bottom = -r;
+  cam.near = 1; cam.far = d * 3;
+  cam.updateProjectionMatrix();
+
+  // 0 at the horizon, 1 at this latitude's own noon, so the light reads the
+  // same way at Turkana and at Kubuqi.
+  const noon = Math.max(0.08, Math.sin(solarPos(st.lat, CFG.day, 12).el));
+  const high = Math.max(0, Math.min(1, v.y / noon));
+  // Below the horizon there is still light for a while: fade over civil twilight
+  // instead of cutting to black the instant the disc sets.
+  const dusk = Math.max(0, Math.min(1, (p.el / D2R + 6) / 6));
+
+  sun.color.setHSL(0.09 + 0.02 * high, 0.55 - 0.42 * high, 0.5 + 0.12 * high);
+  sun.intensity = (0.5 + 1.05 * high) * dusk;
+
+  // Sky and fog follow the sun: warm haze low, pale desert blue at midday.
+  // Blend in RGB, not HSL — a hue ramp from orange to blue passes through green.
+  sky.copy(SKY_LOW).lerp(SKY_HIGH, high).multiplyScalar((0.6 + 0.4 * high) * (0.12 + 0.88 * dusk));
+  scene.background = sky;
+  scene.fog.color.copy(sky);
+  hemi.color.copy(sky);
+  hemi.intensity = (0.35 + 0.3 * high) * (0.25 + 0.75 * dusk);
+}
+
+// ===========================================================================
+//  Insolation: sun per square foot, integrated over the day's whole sweep
+// ===========================================================================
+//
+// This is a shadow map done in software, in plan. For each step of the sun:
+//
+//   1. Every occluder above roof height (modules, and the fabric if there is
+//      any) is projected straight down the sun vector onto the ground and
+//      rasterised into a transmission mask.
+//   2. A point at height h reads that same mask at (x - h·sx, z - h·sz), since
+//      dropping the ray from the point to the ground shifts it by exactly that.
+//      One mask therefore serves the ground, the roofs and the walls.
+//   3. Homes are kept out of the mask — they sit below the roofs and walls that
+//      read it — and tested analytically instead, which is cheap for 9 boxes.
+//
+// Cost is O(modules x steps), not O(cells x modules x steps), which is what
+// makes it fast enough to redo on every parameter change.
+
+let sunmap = null;      // last completed result
+let sunSeq = 0;         // bumped on completion; the headless tests wait on it
+
+// Sun positions across the daylight window, with clear-sky watts per ft2.
+function sunSteps(site, day, n) {
+  const H = halfDay(site.lat, day);
+  const out = [];
+  if (H <= 0.01) return out;                 // polar night; not at these latitudes
+  const dt = 2 * H / n;                      // hours represented by each step
+  for (let i = 0; i < n; i++) {
+    const hour = 12 - H + (i + 0.5) * dt;
+    const p = solarPos(site.lat, day, hour);
+    if (p.el <= 0.02) continue;
+    const v = sunVec(p);
+    if (v.y < 0.02) continue;                // grazing: shadows run to infinity
+    out.push({ hour, el: p.el, v, dt, ghi: clearSky(v.y), sx: v.x / v.y, sz: v.z / v.y });
+  }
+  return out;
+}
+
+// Is the segment from (px,pz) running to (px+ex, pz+ez) inside the square?
+// Used as: does the ray to the sun cross a home before it clears the roof.
+function segHitsSquare(px, pz, ex, ez, cx, cz, h) {
+  let t0 = 0, t1 = 1;
+  for (let a = 0; a < 2; a++) {
+    const p = a ? pz : px, e = a ? ez : ex, lo = (a ? cz : cx) - h, hi = (a ? cz : cx) + h;
+    if (Math.abs(e) < 1e-9) { if (p < lo || p > hi) return false; continue; }
+    let n = (lo - p) / e, f = (hi - p) / e;
+    if (n > f) { const t = n; n = f; f = t; }
+    if (n > t0) t0 = n;
+    if (f < t1) t1 = f;
+    if (t0 > t1) return false;
+  }
+  return true;
+}
+
+// Any home between this point and the sun? skipX/skipZ is the home it stands on.
+function homeShadow(px, py, pz, step, skipX, skipZ) {
+  const rise = CFG.homeH - py;
+  if (rise <= 0) return false;               // already above every roof
+  const ex = rise * step.sx, ez = rise * step.sz, h = half();
+  for (let i = 0; i < CFG.grid; i++) {
+    const cx = i * CFG.pitch;
+    for (let j = 0; j < CFG.grid; j++) {
+      const cz = j * CFG.pitch;
+      if (cx === skipX && cz === skipZ) continue;
+      if (segHitsSquare(px, pz, ex, ez, cx, cz, h)) return true;
+    }
+  }
+  return false;
+}
+
+// Rasterise one convex quad of transmission into the mask.
+function fillQuad(m, qx, qz, t) {
+  let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+  for (let k = 0; k < 4; k++) {
+    if (qx[k] < x0) x0 = qx[k]; if (qx[k] > x1) x1 = qx[k];
+    if (qz[k] < z0) z0 = qz[k]; if (qz[k] > z1) z1 = qz[k];
+  }
+  const i0 = Math.max(0, Math.floor((x0 - m.minX) / m.cell));
+  const i1 = Math.min(m.nx - 1, Math.ceil((x1 - m.minX) / m.cell));
+  const j0 = Math.max(0, Math.floor((z0 - m.minZ) / m.cell));
+  const j1 = Math.min(m.nz - 1, Math.ceil((z1 - m.minZ) / m.cell));
+  for (let j = j0; j <= j1; j++) {
+    const pz = m.minZ + (j + 0.5) * m.cell;
+    for (let i = i0; i <= i1; i++) {
+      const px = m.minX + (i + 0.5) * m.cell;
+      let neg = false, pos = false;
+      for (let k = 0; k < 4; k++) {
+        const ax = qx[k], az = qz[k], bx = qx[(k + 1) & 3], bz = qz[(k + 1) & 3];
+        const cr = (bx - ax) * (pz - az) - (bz - az) * (px - ax);
+        if (cr < -1e-7) neg = true; else if (cr > 1e-7) pos = true;
+        if (neg && pos) break;
+      }
+      if (!(neg && pos)) m.t[j * m.nx + i] *= t;
+    }
+  }
+}
+
+// Fabric blocks most of the light; a cable net with no cloth on it blocks none.
+const FABRIC_T = 0.30;
+
+// The membrane at a coarse stride: it is smooth, so a fraction of its nodes
+// carries the shadow perfectly well and costs a fraction of the work.
+function membraneOccluders(s, stride) {
+  const out = [];
+  for (let j = 0; j + stride < s.nz; j += stride) {
+    for (let i = 0; i + stride < s.nx; i += stride) {
+      const k = j * s.nx + i, k1 = k + stride, k2 = k + stride * s.nx, k3 = k2 + stride;
+      if (!s.active[k] || !s.active[k1] || !s.active[k2] || !s.active[k3]) continue;
+      const xa = s.minX + i * s.dx, xb = s.minX + (i + stride) * s.dx;
+      const za = s.minZ + j * s.dz, zb = s.minZ + (j + stride) * s.dz;
+      out.push([xa, s.y[k], za, xb, s.y[k1], za, xb, s.y[k3], zb, xa, s.y[k2], zb]);
+    }
+  }
+  return out;
+}
+
+// --- what grows -------------------------------------------------------------
+// sun is the fraction of open-sky insolation the surface receives; wet is the
+// 0..1 water index. Both ranges are "will grow", not "will thrive".
+const FLORA = [
+  { key: 'cactus',  name: 'Columnar cactus',  col: 0x5d7f52, sun: [0.60, 1.00], wet: [0.00, 0.34], sp: 8,  h: [5, 9],     form: 'column',  on: 'ground' },
+  { key: 'agave',   name: 'Agave / aloe',     col: 0x7d9668, sun: [0.44, 0.96], wet: [0.08, 0.46], sp: 5,  h: [2.2, 3.6], form: 'rosette', on: 'ground' },
+  { key: 'saltbush',name: 'Saltbush scrub',   col: 0x87905e, sun: [0.34, 0.86], wet: [0.20, 0.58], sp: 5,  h: [2.4, 4],   form: 'bush',    on: 'ground' },
+  { key: 'sorghum', name: 'Sorghum / millet', col: 0xa3ac4c, sun: [0.48, 0.96], wet: [0.42, 1.00], sp: 3,  h: [4, 6.5],   form: 'grass',   on: 'ground' },
+  { key: 'moringa', name: 'Moringa / olive',  col: 0x4e7c44, sun: [0.28, 0.74], wet: [0.36, 1.00], sp: 18, h: [10, 15],   form: 'tree',    on: 'ground' },
+  { key: 'greens',  name: 'Leaf crop beds',   col: 0x57a54c, sun: [0.12, 0.46], wet: [0.34, 1.00], sp: 3,  h: [1, 1.7],   form: 'bed',     on: 'ground' },
+  { key: 'clover',  name: 'Shade clover',     col: 0x3f8256, sun: [0.03, 0.34], wet: [0.22, 1.00], sp: 3,  h: [0.6, 1.1], form: 'mat',     on: 'ground' },
+  { key: 'sedum',   name: 'Roof sedum mat',   col: 0x8a9b5a, sun: [0.30, 1.00], wet: [0.14, 1.00], sp: 5,  h: [0.5, 0.9], form: 'mat',     on: 'roof' },
+  { key: 'vine',    name: 'Wall vine',        col: 0x4b8f4e, sun: [0.08, 0.68], wet: [0.28, 1.00], sp: 6,  h: [1.6, 3],   form: 'vine',    on: 'wall' },
+];
+
+// Triangular fit inside a range: 0 outside, 1 in the middle. Multiplying the
+// two gives a single "how well does this spot suit this species" number, so the
+// bands can overlap and the better-suited plant simply wins.
+function fit(v, r) {
+  if (v <= r[0] || v >= r[1]) return 0;
+  const mid = (r[0] + r[1]) / 2, halfW = (r[1] - r[0]) / 2;
+  return 1 - Math.abs(v - mid) / halfW;
+}
+
+function pickPlant(sun, wet, where) {
+  let best = -1, score = 0.04;               // below this, call it bare ground
+  for (let i = 0; i < FLORA.length; i++) {
+    const f = FLORA[i];
+    if (f.on !== where) continue;
+    const s = fit(sun, f.sun) * fit(wet, f.wet);
+    if (s > score) { score = s; best = i; }
+  }
+  return { i: best, score };
+}
+
+// Deterministic per-cell noise. Planting positions must not reshuffle when the
+// canopy changes — what should move is the species, not the pots.
+function hash01(a, b, salt) {
+  let h = (a * 374761393 + b * 668265263 + (salt || 0) * 2147483647) | 0;
+  h = (h ^ (h >>> 13)) * 1274126177;
+  return ((h ^ (h >>> 16)) >>> 0) / 4294967296;
+}
+
+// ---------------------------------------------------------------------------
+// The job itself, written as a generator so the frame loop can run it a slice
+// at a time and the tool never drops below 60 fps while it thinks.
+// ---------------------------------------------------------------------------
+function* sunMapJob(coarse) {
+  const st = SITES[CFG.site];
+  const s = surface;
+  const blockW = CFG.grid * CFG.pitch;
+  const cell = Math.max(2.5, blockW / (coarse ? 40 : 78));
+  const nx = Math.ceil(blockW / cell), nz = nx;
+  const minX = -CFG.pitch / 2, minZ = -CFG.pitch / 2;
+  const steps = sunSteps(st, CFG.day, coarse ? 9 : 21);
+
+  const m = { t: new Float32Array(nx * nz), nx, nz, cell, minX, minZ };
+  const beam = new Float32Array(nx * nz);    // Wh/ft2/day of direct sun
+  const open = new Float32Array(nx * nz);    // sky the cell can still see, 0..1
+  const quads = membraneOccluders(s, Math.max(1, Math.round((coarse ? 14 : 8) / s.dx)));
+  const pv = panelVerts;                     // 12 floats per module, set by rebuild
+  const qx = [0, 0, 0, 0], qz = [0, 0, 0, 0];
+
+  let ghiDay = 0, hoursDay = 0;
+  for (const step of steps) { ghiDay += step.ghi * step.dt; hoursDay += step.dt; }
+  const openDay = ghiDay || 1;               // a day of open sky, for reference
+
+  // --- roofs and walls read the same mask, offset by their own height -------
+  const patches = [];
+  if (CFG.wallPlants) {
+    const h = half(), step2 = Math.max(4, CFG.home / 5);
+    const cols = Math.max(1, Math.round(CFG.home / step2));
+    const rows = Math.max(1, Math.round((CFG.homeH - 3) / step2));
+    for (const [cx, cz] of homeCentres()) {
+      for (let a = 0; a < cols; a++) {
+        for (let b = 0; b < cols; b++) {
+          const x = cx - h + (a + 0.5) * (CFG.home / cols);
+          const z = cz - h + (b + 0.5) * (CFG.home / cols);
+          patches.push({ x, y: CFG.homeH, z, nx: 0, ny: 1, nz: 0, where: 'roof', cx, cz });
+        }
+      }
+      const faces = [[0, 1], [0, -1], [1, 0], [-1, 0]];
+      for (const [fx, fz] of faces) {
+        for (let a = 0; a < cols; a++) {
+          for (let b = 0; b < rows; b++) {
+            const u = -h + (a + 0.5) * (CFG.home / cols);
+            const y = 3 + (b + 0.5) * ((CFG.homeH - 3) / rows);
+            const x = cx + (fx ? fx * (h + 0.35) : u);
+            const z = cz + (fz ? fz * (h + 0.35) : u);
+            patches.push({ x, y, z, nx: fx, ny: 0, nz: fz, where: 'wall', cx, cz });
+          }
+        }
+      }
+    }
+  }
+
+  for (const q of patches) { q.sun = 0; q.sky = 0; }
+  for (const step of steps) {
+    m.t.fill(1);
+    if (CFG.style === 'fabric') {
+      for (const q of quads) {
+        for (let k = 0; k < 4; k++) {
+          qx[k] = q[k * 3] - q[k * 3 + 1] * step.sx;
+          qz[k] = q[k * 3 + 2] - q[k * 3 + 1] * step.sz;
+        }
+        fillQuad(m, qx, qz, FABRIC_T);
+      }
+    }
+    if (pv) {
+      for (let p = 0; p < pv.length; p += 12) {
+        for (let k = 0; k < 4; k++) {
+          qx[k] = pv[p + k * 3] - pv[p + k * 3 + 1] * step.sx;
+          qz[k] = pv[p + k * 3 + 2] - pv[p + k * 3 + 1] * step.sz;
+        }
+        fillQuad(m, qx, qz, 0);
+      }
+    }
+    // Ground: direct beam through the mask, minus anything the homes block.
+    const direct = 0.85 * step.ghi * step.dt;
+    for (let j = 0; j < nz; j++) {
+      const pz = minZ + (j + 0.5) * cell;
+      for (let i = 0; i < nx; i++) {
+        const k = j * nx + i, t = m.t[k];
+        open[k] += t * step.dt;
+        if (t > 0.001 && !homeShadow(minX + (i + 0.5) * cell, 0, pz, step, NaN, NaN))
+          beam[k] += direct * t;
+      }
+    }
+
+    const dni = step.ghi / Math.max(0.05, step.v.y);   // beam per unit normal area
+    for (const q of patches) {
+      const cos = q.nx * step.v.x + q.ny * step.v.y + q.nz * step.v.z;
+      const gx = q.x - q.y * step.sx, gz = q.z - q.y * step.sz;
+      const i = Math.floor((gx - minX) / cell), j = Math.floor((gz - minZ) / cell);
+      const t = (i < 0 || j < 0 || i >= nx || j >= nz) ? 1 : m.t[j * nx + i];
+      q.sky += t * step.dt;
+      if (cos <= 0 || t <= 0.001) continue;
+      if (homeShadow(q.x, q.y, q.z, step, q.cx, q.cz)) continue;
+      q.sun += 0.85 * dni * cos * t * step.dt;
+    }
+    yield;
+  }
+
+  // --- resolve the ground ---------------------------------------------------
+  // The species verdict is settled here rather than at draw time: the ground
+  // tint and the planting are then two readings of one answer, and cannot
+  // disagree about what a patch of dirt will support.
+  const ground = new Float32Array(nx * nz);
+  const wet = new Float32Array(nx * nz);
+  const inHome = new Uint8Array(nx * nz);
+  const pick = new Int16Array(nx * nz).fill(-1);
+  const score = new Float32Array(nx * nz);
+  const rainIdx = Math.min(1, st.rain / 500);
+  for (let j = 0; j < nz; j++) {
+    const pz = minZ + (j + 0.5) * cell;
+    for (let i = 0; i < nx; i++) {
+      const k = j * nx + i, px = minX + (i + 0.5) * cell;
+      if (insideHome(px, pz, 0)) { inHome[k] = 1; continue; }
+      const sky = hoursDay ? open[k] / hoursDay : 1;
+      ground[k] = beam[k] + 0.15 * ghiDay * sky;       // diffuse follows sky view
+      wet[k] = waterIndex(ground[k] / openDay, px, pz, rainIdx);
+      const p = pickPlant(ground[k] / openDay, wet[k], 'ground');
+      pick[k] = p.i;
+      score[k] = p.score;
+    }
+  }
+  yield;
+  for (const q of patches) {
+    const sky = hoursDay ? q.sky / hoursDay : 1;
+    q.sun += 0.15 * ghiDay * sky * (1 + q.ny) / 2;
+    q.frac = q.sun / openDay;
+    // Roofs catch their own rain; walls only get what runs down them.
+    q.wet = Math.min(1, rainIdx * (q.where === 'roof' ? 1 : 0.5) +
+                        CFG.water * (q.where === 'roof' ? 0.9 : 0.7) * (1 - 0.4 * q.frac));
+  }
+  yield;
+
+  return { nx, nz, cell, minX, minZ, ground, wet, inHome, pick, score, open: openDay,
+           hours: hoursDay, patches, coarse, site: CFG.site, day: CFG.day };
+}
+
+// Water budget as a 0..1 index. Rain and irrigation set the supply; sun burns
+// it off; the homes concentrate their roof catchment into a band at their feet.
+function waterIndex(sunFrac, x, z, rainIdx) {
+  let m = rainIdx * (1 - 0.55 * sunFrac) + CFG.water * (1 - 0.30 * sunFrac);
+  m += 0.09 * (1 - sunFrac);                       // shade holds dew and mulch
+  const d = distToHome(x, z);
+  if (d < 14) m += 0.34 * (1 - d / 14) * Math.max(rainIdx, CFG.water);
+  return Math.max(0, Math.min(1, m));
+}
+
+// ---------------------------------------------------------------------------
+// Drawing the result: a heat map on the ground and whatever will grow on it.
+// ---------------------------------------------------------------------------
+
+// Sequential dark-to-bright ramp. Not a rainbow: irradiance is a magnitude, so
+// the colour has to be ordered or the map cannot be read.
+const HEAT = [[8, 4, 30], [66, 12, 104], [147, 38, 103], [221, 81, 58], [252, 165, 10], [252, 255, 164]];
+function heatColor(f, out) {
+  const t = Math.max(0, Math.min(1, f)) * (HEAT.length - 1);
+  const i = Math.min(HEAT.length - 2, Math.floor(t)), u = t - i;
+  for (let c = 0; c < 3; c++) out[c] = HEAT[i][c] + (HEAT[i + 1][c] - HEAT[i][c]) * u;
+}
+
+function buildHeatMesh(sm) {
+  const data = new Uint8Array(sm.nx * sm.nz * 4);
+  const rgb = [0, 0, 0];
+  for (let j = 0; j < sm.nz; j++) {
+    for (let i = 0; i < sm.nx; i++) {
+      const k = j * sm.nx + i;
+      // Texture v runs +Z downward once the plane is laid flat, hence the flip.
+      const o = ((sm.nz - 1 - j) * sm.nx + i) * 4;
+      if (sm.inHome[k]) { data[o + 3] = 0; continue; }
+      heatColor(sm.ground[k] / sm.open, rgb);
+      data[o] = rgb[0]; data[o + 1] = rgb[1]; data[o + 2] = rgb[2]; data[o + 3] = 235;
+    }
+  }
+  const tex = new THREE.DataTexture(data, sm.nx, sm.nz, THREE.RGBAFormat);
+  tex.magFilter = THREE.LinearFilter;
+  tex.minFilter = THREE.LinearFilter;
+  tex.needsUpdate = true;
+  const w = sm.nx * sm.cell, h = sm.nz * sm.cell;
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h),
+    new THREE.MeshBasicMaterial({ map: tex, transparent: true, depthWrite: false }));
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.position.set(sm.minX + w / 2, 0.08, sm.minZ + h / 2);
+  return mesh;
+}
+
+// How much growth a patch supports, 0..1 — the ground cover, not the species.
+//
+// Liebig's law: take the limiting factor, do not average them. Water sets the
+// ceiling; too little light and nothing photosynthesises; too much and, in a
+// desert, the sun burns off more than the plant can carry. That last term is
+// the whole agrivoltaic argument, so the curve peaks in dappled shade rather
+// than in the open, and the ground greens up where the canopy does its work.
+//
+// Fit only tempers the result: a spot nothing will grow on is bare whatever
+// the light and water say.
+function vigour(sm, k) {
+  if (sm.inHome[k] || sm.pick[k] < 0) return 0;
+  const sf = sm.ground[k] / sm.open;
+  const light = Math.min(1, sf / 0.22);
+  const stress = 1 - 0.8 * Math.max(0, (sf - 0.45) / 0.55);
+  return Math.min(1, sm.wet[k] * light * stress * (0.55 + 0.45 * sm.score[k]) * 1.9);
+}
+
+// Sand -> dry khaki -> grass. The sand end is the ground material's own colour,
+// so the tint fades into bare desert instead of ending at a line.
+const SOIL = [[194, 166, 120], [168, 158, 92], [124, 148, 74], [86, 133, 66]];
+
+function buildGrowthMesh(sm) {
+  const data = new Uint8Array(sm.nx * sm.nz * 4);
+  for (let j = 0; j < sm.nz; j++) {
+    for (let i = 0; i < sm.nx; i++) {
+      const k = j * sm.nx + i;
+      const o = ((sm.nz - 1 - j) * sm.nx + i) * 4;      // texture v runs the other way
+      // Mottle it: a smooth ramp reads as a blur, and ground cover is patchy.
+      const v = Math.max(0, Math.min(1, vigour(sm, k) * (0.82 + 0.36 * hash01(i, j, 31))));
+      const t = v * (SOIL.length - 1);
+      const c = Math.min(SOIL.length - 2, Math.floor(t)), u = t - c;
+      for (let n = 0; n < 3; n++) data[o + n] = SOIL[c][n] + (SOIL[c + 1][n] - SOIL[c][n]) * u;
+      data[o + 3] = sm.inHome[k] ? 0 : Math.round(255 * Math.min(1, v * 1.25));
+    }
+  }
+  const tex = new THREE.DataTexture(data, sm.nx, sm.nz, THREE.RGBAFormat);
+  tex.magFilter = THREE.LinearFilter;
+  tex.minFilter = THREE.LinearFilter;
+  tex.needsUpdate = true;
+  const w = sm.nx * sm.cell, h = sm.nz * sm.cell;
+  // Lambert, not Basic: it has to take the same dappled shadow as the sand
+  // under it, or the green would wash the pattern out.
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(w, h),
+    new THREE.MeshLambertMaterial({ map: tex, transparent: true, depthWrite: false }));
+  mesh.rotation.x = -Math.PI / 2;
+  mesh.position.set(sm.minX + w / 2, 0.04, sm.minZ + h / 2);
+  mesh.receiveShadow = true;
+  return mesh;
+}
+
+// One merged geometry per plant form, built once and instanced thereafter.
+const PLANT_GEO = {};
+function mergeGeos(parts) {
+  const pos = [], nor = [];
+  for (const [g, m] of parts) {
+    const gg = g.index ? g.toNonIndexed() : g.clone();
+    gg.applyMatrix4(m);
+    const p = gg.attributes.position.array, n = gg.attributes.normal.array;
+    for (let i = 0; i < p.length; i++) pos.push(p[i]);
+    for (let i = 0; i < n.length; i++) nor.push(n[i]);
+    gg.dispose();
+  }
+  const out = new THREE.BufferGeometry();
+  out.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  out.setAttribute('normal', new THREE.Float32BufferAttribute(nor, 3));
+  out.computeBoundingSphere();
+  return out;
+}
+
+// Every form is modelled 1 ft tall and scaled per instance, so one geometry
+// covers a species' whole size range.
+function plantGeo(form) {
+  if (PLANT_GEO[form]) return PLANT_GEO[form];
+  const M = (x, y, z, sx, sy, sz) => new THREE.Matrix4()
+    .makeScale(sx === undefined ? 1 : sx, sy === undefined ? 1 : sy, sz === undefined ? 1 : sz)
+    .setPosition(x, y, z);
+  let g;
+  if (form === 'column') {
+    g = mergeGeos([
+      [new THREE.CylinderGeometry(0.09, 0.11, 1, 7), M(0, 0.5, 0)],
+      [new THREE.CylinderGeometry(0.06, 0.07, 0.4, 6), M(0.11, 0.62, 0)],
+    ]);
+  } else if (form === 'rosette') {
+    g = mergeGeos([[new THREE.ConeGeometry(0.42, 1, 7), M(0, 0.5, 0)]]);
+  } else if (form === 'bush') {
+    g = mergeGeos([
+      [new THREE.IcosahedronGeometry(0.5, 0), M(0, 0.55, 0, 1, 0.9, 1)],
+      [new THREE.IcosahedronGeometry(0.3, 0), M(0.3, 0.3, 0.15)],
+    ]);
+  } else if (form === 'grass') {
+    g = mergeGeos([
+      [new THREE.ConeGeometry(0.13, 1, 5), M(0, 0.5, 0)],
+      [new THREE.ConeGeometry(0.10, 0.8, 5), M(0.16, 0.4, 0.1)],
+      [new THREE.ConeGeometry(0.10, 0.8, 5), M(-0.14, 0.4, -0.1)],
+    ]);
+  } else if (form === 'tree') {
+    g = mergeGeos([
+      [new THREE.CylinderGeometry(0.045, 0.07, 0.55, 6), M(0, 0.28, 0)],
+      [new THREE.IcosahedronGeometry(0.36, 0), M(0, 0.72, 0, 1, 0.85, 1)],
+    ]);
+  } else if (form === 'bed') {
+    // A row of low leafy mounds, not a crate: these are salad beds.
+    g = mergeGeos([
+      [new THREE.IcosahedronGeometry(0.5, 0), M(-0.5, 0.4, 0, 1, 0.8, 1)],
+      [new THREE.IcosahedronGeometry(0.55, 0), M(0.35, 0.45, 0.1, 1, 0.8, 1)],
+      [new THREE.IcosahedronGeometry(0.4, 0), M(0.1, 0.35, -0.5, 1, 0.8, 1)],
+    ]);
+  } else if (form === 'vine') {
+    g = mergeGeos([
+      [new THREE.IcosahedronGeometry(0.34, 0), M(0, 0.5, 0, 1, 1.5, 0.45)],
+      [new THREE.IcosahedronGeometry(0.22, 0), M(0.1, 1.0, 0, 1, 1, 0.45)],
+    ]);
+  } else {   // mat
+    g = mergeGeos([[new THREE.IcosahedronGeometry(0.62, 0), M(0, 0.35, 0, 1, 0.55, 1)]]);
+  }
+  PLANT_GEO[form] = g;
+  return g;
+}
+
+const PLANT_CAP = 7000;   // instances; beyond this the field reads as solid anyway
+
+function buildPlanting(sm) {
+  const buckets = FLORA.map(() => []);
+
+  // Pass one thins the job's species verdict down to actual planting spots;
+  // pass two places them, capped so a big site stays as quick as a small one.
+  const picks = new Int16Array(sm.nx * sm.nz).fill(-1);
+  let candidates = 0;
+  for (let j = 0; j < sm.nz; j++) {
+    for (let i = 0; i < sm.nx; i++) {
+      const k = j * sm.nx + i;
+      if (sm.pick[k] < 0) continue;
+      const f = FLORA[sm.pick[k]];
+      const chance = Math.min(1, (sm.cell * sm.cell) / (f.sp * f.sp)) * (0.35 + 0.65 * sm.score[k]);
+      if (hash01(i, j, 1) > chance) continue;
+      picks[k] = sm.pick[k];
+      candidates++;
+    }
+  }
+  const thin = Math.min(1, PLANT_CAP / Math.max(1, candidates));
+
+  for (let j = 0; j < sm.nz; j++) {
+    for (let i = 0; i < sm.nx; i++) {
+      const k = j * sm.nx + i;
+      if (picks[k] < 0 || hash01(i, j, 7) > thin) continue;
+      const f = FLORA[picks[k]];
+      const x = sm.minX + (i + hash01(i, j, 2)) * sm.cell;
+      const z = sm.minZ + (j + hash01(i, j, 3)) * sm.cell;
+      const h = f.h[0] + (f.h[1] - f.h[0]) * hash01(i, j, 4);
+      buckets[picks[k]].push([x, 0, z, h, hash01(i, j, 5) * Math.PI * 2, 0, 0]);
+    }
+  }
+
+  // Roofs and walls come from the patch list, which already knows its normals.
+  for (let q = 0; q < sm.patches.length; q++) {
+    const p = sm.patches[q];
+    const pick = pickPlant(p.frac, p.wet, p.where);
+    if (pick.i < 0) continue;
+    const f = FLORA[pick.i];
+    if (hash01(q, 11, 6) > Math.min(1, 0.85 * pick.score + 0.3)) continue;
+    const h = f.h[0] + (f.h[1] - f.h[0]) * hash01(q, 13, 4);
+    const jx = (hash01(q, 17, 2) - 0.5) * CFG.home / 6;
+    const jz = (hash01(q, 19, 3) - 0.5) * CFG.home / 6;
+    if (p.where === 'roof') {
+      buckets[pick.i].push([p.x + jx, CFG.homeH + 0.1, p.z + jz, h, hash01(q, 23, 5) * 6.28, 0, 0]);
+    } else {
+      // Lie the vine against the wall: tip its Y axis out along the face normal.
+      buckets[pick.i].push([p.x, p.y, p.z, h, 0, p.nx, p.nz]);
+    }
+  }
+
+  const group = new THREE.Group();
+  const counts = [];
+  const dummy = new THREE.Object3D();
+  for (let i = 0; i < FLORA.length; i++) {
+    const list = buckets[i];
+    counts.push(list.length);
+    if (!list.length) continue;
+    const f = FLORA[i];
+    const mesh = new THREE.InstancedMesh(plantGeo(f.form),
+      new THREE.MeshLambertMaterial({ color: f.col }), list.length);
+    for (let n = 0; n < list.length; n++) {
+      const [x, y, z, h, rot, wx, wz] = list[n];
+      dummy.position.set(x, y, z);
+      dummy.rotation.set(0, rot, 0);
+      dummy.scale.set(h * 0.55, h, h * 0.55);
+      if (wx || wz) {
+        // Wall plant: tip its growth axis out along the face normal. Rotating
+        // about Z sends +Y toward -X, hence the sign flip on wx but not wz.
+        dummy.rotation.set(wz * 1.15, 0, -wx * 1.15);
+        dummy.scale.set(h * 0.7, h, h * 0.7);
+      }
+      dummy.updateMatrix();
+      mesh.setMatrixAt(n, dummy.matrix);
+    }
+    mesh.instanceMatrix.needsUpdate = true;
+    mesh.frustumCulled = false;
+    // Without a shadow they read as stickers floating over the sand. Only the
+    // tall species earn it though: a shadow pass over a few thousand ankle-high
+    // mats costs real frames and casts almost nothing you can see.
+    mesh.castShadow = CFG.shadows && f.h[1] >= 3;
+    group.add(mesh);
+  }
+  return { group, counts };
+}
+
+// Distance out from the nearest home wall (0 if you are standing on one).
+function distToHome(x, z) {
+  const h = half();
+  let best = Infinity;
+  for (let i = 0; i < CFG.grid; i++) {
+    const dx = Math.max(0, Math.abs(x - i * CFG.pitch) - h);
+    if (dx >= best) continue;
+    for (let j = 0; j < CFG.grid; j++) {
+      const dz = Math.max(0, Math.abs(z - j * CFG.pitch) - h);
+      const d = Math.hypot(dx, dz);
+      if (d < best) best = d;
+    }
+  }
+  return best;
+}
+
+// The plant geometries are shared and cached, so this must not be disposeGroup.
+function clearPlants() {
+  gPlants.traverse(o => { if (o.isInstancedMesh) { o.material.dispose(); o.dispose(); } });
+  gPlants.clear();
+}
+const clearOverlay = g => {
+  g.traverse(o => {
+    if (!o.material) return;
+    if (o.material.map) o.material.map.dispose();
+    o.material.dispose(); o.geometry.dispose();
+  });
+  g.clear();
+};
+function clearHeat() { clearOverlay(gHeat); }
+function clearGrowth() { clearOverlay(gGrowth); }
+
+function applySunMap(sm) {
+  sunmap = sm;
+  clearHeat();
+  if (CFG.sunmap) gHeat.add(buildHeatMesh(sm));
+
+  // The ground itself greens up where the conditions carry it, whether or not
+  // anything is drawn standing on it.
+  clearGrowth();
+  if (CFG.growth) gGrowth.add(buildGrowthMesh(sm));
+
+  clearPlants();
+  let counts = null;
+  if (CFG.plants) {
+    const r = buildPlanting(sm);
+    gPlants.add(r.group);
+    counts = r.counts;
+  }
+  drawLegend(counts);
+
+  const lit = [];
+  let sum = 0, green = 0;
+  for (let k = 0; k < sm.ground.length; k++)
+    if (!sm.inHome[k]) {
+      sum += sm.ground[k]; lit.push(sm.ground[k]);
+      if (vigour(sm, k) > 0.5) green++;
+    }
+  const mean = lit.length ? sum / lit.length : 0;
+  // The mean is close to fixed — over a whole day a periodic array shades the
+  // same total area whatever the sun does. What the design actually moves is
+  // the spread: how evenly that shade is spilled around.
+  lit.sort((a, b) => a - b);
+  const pct = q => lit.length ? lit[Math.min(lit.length - 1, Math.floor(q * lit.length))] : 0;
+  setSunStats({
+    'Daylight': sm.hours.toFixed(1) + ' h',
+    'Open sun': Math.round(sm.open) + ' Wh/ft²',
+    'Ground sun': Math.round(mean) + ' Wh/ft² (' + (100 * mean / sm.open).toFixed(0) + '%)',
+    'Shadiest → sunniest': (100 * pct(0.1) / sm.open).toFixed(0) + '–' +
+                           (100 * pct(0.9) / sm.open).toFixed(0) + '%',
+    'Ground in cover': (100 * green / Math.max(1, lit.length)).toFixed(0) + '%',
+    'Sun map': Math.round(sunWork) + ' ms' + (sm.coarse ? ' (draft)' : ''),
+    'Plants': counts ? counts.reduce((a, b) => a + b, 0).toLocaleString() : '—',
+  });
+
+  sunSeq++;
+  window.__sun = {
+    seq: sunSeq, nx: sm.nx, cell: sm.cell, coarse: sm.coarse, mean, open: sm.open,
+    hours: sm.hours, counts, patches: sm.patches.length,
+    ms: Math.round(sunWork), starts: sunStarts,
+    green: green / Math.max(1, lit.length),
+  };
+}
+
+function drawLegend(counts) {
+  const el = document.getElementById('legend');
+  if (!counts) { el.style.display = 'none'; el.innerHTML = ''; return; }
+  const rows = FLORA.map((f, i) => [f, counts[i]]).filter(r => r[1] > 0)
+    .sort((a, b) => b[1] - a[1]);
+  el.style.display = rows.length ? 'block' : 'none';
+  el.innerHTML = rows.map(([f, c]) =>
+    `<div><i style="background:#${f.col.toString(16).padStart(6, '0')}"></i>${f.name}<b>${c.toLocaleString()}</b></div>`).join('');
+}
+
+// ---------------------------------------------------------------------------
+// Throttle. A slider drag fires a change per pixel; recomputing on each one
+// would be pointless work nobody sees. So: run once on the rising edge (the
+// first change after a quiet spell, at low resolution, for an instant answer),
+// then once more on the falling edge at full resolution when the input settles.
+// Anything in flight when a new change arrives is abandoned where it stands.
+// ---------------------------------------------------------------------------
+let sunTimer = null, sunLast = -1e9;
+const SUN_SETTLE = 170;    // ms of quiet before the full pass runs
+const SUN_QUIET = 900;     // ms after which a change counts as a fresh gesture
+
+function scheduleSunMap() {
+  if (!surface) return;                            // nothing to cast a shadow yet
+  clearTimeout(sunTimer);
+  sunRun = null;                                   // drop any half-finished pass
+  // sunLast is when a pass last *started*, so a quiet spell is measured against
+  // real work and the rising edge is not swallowed by bookkeeping.
+  if (performance.now() - sunLast > SUN_QUIET) startSunMap(true);
+  sunTimer = setTimeout(() => startSunMap(false), SUN_SETTLE);   // falling edge
+}
+
+let sunStarts = 0, sunWork = 0;
+
+function startSunMap(coarse) {
+  if (!surface) return;
+  sunLast = performance.now();
+  sunWork = 0;
+  sunStarts++;
+  sunRun = sunMapJob(coarse);
+}
+
+// Pumped from the frame loop with a slice of the frame's budget, so the job
+// never blocks a render however big the site is.
+function pumpSunMap() {
+  if (!sunRun) return;
+  const t0 = performance.now(), until = t0 + 6;
+  let r;
+  do { r = sunRun.next(); } while (!r.done && performance.now() < until);
+  sunWork += performance.now() - t0;
+  if (!r.done) return;
+  sunRun = null;
+  applySunMap(r.value);
+}
+
+// ===========================================================================
+//  Init / UI
+// ===========================================================================
+function init() {
+  scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x141821);
+  scene.fog = new THREE.Fog(0x141821, 600, 2600);
+
+  camera = new THREE.PerspectiveCamera(45, innerWidth / innerHeight, 0.5, 8000);
+  renderer = new THREE.WebGLRenderer({ antialias: true });
+  renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+  renderer.setSize(innerWidth, innerHeight);
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  document.body.appendChild(renderer.domElement);
+
+  controls = new THREE.OrbitControls(camera, renderer.domElement);
+  controls.enableDamping = true;
+  controls.dampingFactor = 0.08;
+  controls.maxPolarAngle = Math.PI * 0.495;
+
+  hemi = new THREE.HemisphereLight(0xbcd6ff, 0x8a6f4a, 0.55);
+  scene.add(hemi);
+  sun = new THREE.DirectionalLight(0xfff1dc, 1.4);
+  sun.castShadow = true;
+  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.bias = -0.0006;
+  sun.shadow.normalBias = 0.4;
+  sunTarget = new THREE.Object3D();
+  scene.add(sun, sunTarget);
+  sun.target = sunTarget;
+
+  SKY_LOW = new THREE.Color(0xd4784a);     // sun near the horizon
+  SKY_HIGH = new THREE.Color(0x8fb6d9);    // midday desert blue
+  sky = new THREE.Color();
+
+  makeMaterials();
+
+  ground = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), MAT.ground);
+  ground.rotation.x = -Math.PI / 2;
+  ground.receiveShadow = true;
+  scene.add(ground);
+
+  gHomes = new THREE.Group(); gCanopy = new THREE.Group(); gPanels = new THREE.Group();
+  gStruct = new THREE.Group(); gNet = new THREE.Group();
+  gPlants = new THREE.Group(); gHeat = new THREE.Group(); gGrowth = new THREE.Group();
+  scene.add(gHomes, gCanopy, gPanels, gStruct, gNet, gPlants, gHeat, gGrowth);
+
+  buildSiteButtons();          // also writes the season label
+  wireUI();
+  resizeSite();
+  renderTable();
+  rebuild();
+  view('over');
+  animate();
+
+  addEventListener('resize', () => {
+    camera.aspect = innerWidth / innerHeight;
+    camera.updateProjectionMatrix();
+    renderer.setSize(innerWidth, innerHeight);
+  });
+}
+
+function resizeSite() {
+  // Ground reaches well past the fog so its edge never shows on the horizon.
+  const w = Math.max(6000, span() * 20);
+  ground.geometry.dispose();
+  ground.geometry = new THREE.PlaneGeometry(w, w);
+  ground.position.set(centre(), -0.05, centre());
+  scene.fog.near = span() * 1.4 + 250;
+  scene.fog.far = span() * 4.5 + 1200;
+}
+
+// --- camera presets ---------------------------------------------------------
+function view(which) {
+  const c = centre(), s = span() + CFG.pitch;
+  if (which === 'over') {
+    camera.position.set(c - s * 0.85, s * 0.72, c + s * 1.15);
+    controls.target.set(c, CFG.mast * 0.4, c);
+  } else if (which === 'top') {
+    // Nudge along +Z only, so the azimuth resolves to 0 and north stays up.
+    camera.position.set(c, s * 1.6, c + s * 0.002);
+    controls.target.set(c, CFG.mast * 0.4, c);
+  } else {
+    // Eye height, looking down a street. Offset off the centre line: the high
+    // point masts stand on it.
+    const street = Math.floor(CFG.grid / 2) * CFG.pitch - CFG.pitch * 0.72;
+    camera.position.set(street, 5.6, -CFG.pitch * 0.75);
+    controls.target.set(street, CFG.mast * 0.75, span() + CFG.pitch * 0.4);
+  }
+  controls.update();
+}
+
+// --- site & season ----------------------------------------------------------
+function buildSiteButtons() {
+  const wrap = document.getElementById('site-btns');
+  SITES.forEach((s, i) => {
+    const b = document.createElement('button');
+    b.textContent = s.name;
+    b.id = 'site-' + i;
+    b.onclick = () => setSite(i);
+    wrap.appendChild(b);
+  });
+  setSite(CFG.site);
+}
+
+function setSite(i) {
+  CFG.site = i;
+  const s = SITES[i];
+  SITES.forEach((_, n) => document.getElementById('site-' + n).classList.toggle('on', n === i));
+  document.getElementById('sitenote').textContent =
+    `${Math.abs(s.lat).toFixed(1)}°${s.lat < 0 ? 'S' : 'N'} · ${s.rain} mm rain/yr — ${s.note}`;
+  // The season is named for the hemisphere, so crossing the equator renames it
+  // without the date moving at all.
+  document.getElementById('lbl-day').textContent = dayLabel(CFG.day);
+  if (surface) { frameSun(); scheduleSunMap(); }   // not during the first build
+}
+
+const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+const MLEN = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+
+function dayLabel(d) {
+  let n = d;
+  let date = '31 Dec';
+  for (let m = 0; m < 12; m++) {
+    if (n <= MLEN[m]) { date = n + ' ' + MONTHS[m]; break; }
+    n -= MLEN[m];
+  }
+  // Season named for the hemisphere you are actually standing in.
+  const f = Math.cos(2 * Math.PI * (d - 172) / 365) * (SITES[CFG.site].lat < 0 ? -1 : 1);
+  const name = f > 0.7 ? 'high summer' : f > 0.2 ? 'summer' :
+               f > -0.2 ? 'equinox' : f > -0.7 ? 'winter' : 'deep winter';
+  return date + ' · ' + name;
+}
+
+// --- point table ------------------------------------------------------------
+function renderTable() {
+  const tb = document.getElementById('point-body');
+  tb.innerHTML = '';
+  nodes.forEach((p, i) => {
+    const tr = document.createElement('tr');
+    ['dx', 'dy', 'dz'].forEach(f => {
+      const td = document.createElement('td');
+      const inp = document.createElement('input');
+      inp.type = 'number'; inp.step = '1'; inp.value = p[f];
+      inp.addEventListener('change', () => {
+        const v = parseFloat(inp.value);
+        if (!isFinite(v)) { inp.classList.add('invalid'); msg('Node values must be numbers.'); return; }
+        inp.classList.remove('invalid');
+        nodes[i][f] = v;
+        scheduleBuild();
+      });
+      td.appendChild(inp); tr.appendChild(td);
+    });
+    const td = document.createElement('td');
+    const b = document.createElement('button');
+    b.className = 'del-btn'; b.textContent = '×'; b.title = 'Remove';
+    b.onclick = () => { nodes.splice(i, 1); renderTable(); scheduleBuild(); };
+    td.appendChild(b); tr.appendChild(td);
+    tb.appendChild(tr);
+  });
+}
+
+function addNode() {
+  const get = id => {
+    const el = document.getElementById(id);
+    const v = parseFloat(el.value);
+    el.classList.toggle('invalid', !isFinite(v));
+    return v;
+  };
+  const dx = get('inp-dx'), dy = get('inp-dy'), dz = get('inp-dz');
+  if (![dx, dy, dz].every(isFinite)) { msg('Enter numbers for dx, dy and dz.'); return; }
+  if (dy < 0) { msg('dy is a height above grade and cannot be negative.'); return; }
+  if (dx < 0 || dz < 0) { msg('dx / dz measure outward from a home corner; use ≥ 0.'); return; }
+  if (nodes.some(p => p.dx === dx && p.dz === dz)) { msg('A node already sits at that dx / dz.'); return; }
+
+  const reach = Math.max(half() + dx, half() + dz);
+  if (reach > CFG.pitch / 2 + 0.001) {
+    msg('Note: ' + fmt(reach) + ' ft reach crosses into the neighbouring bay (half pitch is ' + fmt(CFG.pitch / 2) + ' ft).');
+  } else msg('');
+
+  nodes.push({ dx, dy, dz });
+  renderTable();
+  scheduleBuild();
+}
+
+// --- debounce so dragging a slider stays smooth ----------------------------
+let buildTimer = null;
+function scheduleBuild(delay) {
+  clearTimeout(buildTimer);
+  buildTimer = setTimeout(rebuild, delay === undefined ? 90 : delay);
+}
+
+function wireUI() {
+  const on = (id, ev, fn) => document.getElementById(id).addEventListener(ev, fn);
+  const num = (id, key, after) => on(id, 'change', e => {
+    const v = parseFloat(e.target.value);
+    if (!isFinite(v)) { e.target.classList.add('invalid'); return; }
+    e.target.classList.remove('invalid');
+    CFG[key] = v; if (after) after(); scheduleBuild();
+  });
+
+  on('cfg-grid', 'change', e => { CFG.grid = +e.target.value; resizeSite(); scheduleBuild(); view('over'); });
+  num('cfg-pitch', 'pitch', () => { resizeSite(); view('over'); });
+  num('cfg-home', 'home');
+  num('cfg-hh', 'homeH');
+  num('cfg-mast', 'mast');
+
+  on('btn-add', 'click', addNode);
+  on('btn-clear', 'click', () => { nodes = []; renderTable(); scheduleBuild(); });
+  on('btn-preset-peak', 'click', () => {
+    nodes = [{ dx: CFG.pitch / 2 - half(), dy: CFG.mast + 16, dz: CFG.pitch / 2 - half() }];
+    renderTable(); scheduleBuild(); msg('Single high point per bay — a hip-tent field.');
+  });
+  on('btn-preset-saddle', 'click', () => {
+    const g = CFG.pitch / 2 - half();
+    nodes = [
+      { dx: g, dy: CFG.mast + 18, dz: g },            // peak at the bay centre
+      { dx: g, dy: CFG.mast - 5, dz: 0 },             // valley mid-way along the street
+    ];
+    renderTable(); scheduleBuild(); msg('Alternating high point and valley — a hyperbolic-paraboloid field.');
+  });
+
+  on('cfg-style', 'change', e => { CFG.style = e.target.value; scheduleBuild(0); });
+  on('cfg-res', 'change', e => { CFG.res = +e.target.value; scheduleBuild(0); });
+
+  const slider = (id, key, lbl, fmtFn, scale) => on(id, 'input', e => {
+    const v = +e.target.value;
+    CFG[key] = scale ? v * scale : v;
+    document.getElementById(lbl).textContent = fmtFn(v);
+    scheduleBuild();
+  });
+  slider('cfg-relax', 'relax', 'lbl-relax', v => v);
+  slider('cfg-sag', 'sag', 'lbl-sag', v => v.toFixed(1) + ' ft');
+  slider('cfg-head', 'head', 'lbl-head', v => v + ' ft');
+  slider('cfg-cov', 'coverage', 'lbl-cov', v => v + '%', 0.01);
+  slider('cfg-panel', 'panel', 'lbl-panel', v => v);
+  on('cfg-hour', 'input', e => {
+    // A drag takes over: leaving the cycle on would fight it frame by frame.
+    if (CFG.dayCycle) document.getElementById('cfg-daycycle').click();
+    setHour(+e.target.value);
+  });
+  on('cfg-daycycle', 'change', e => { CFG.dayCycle = e.target.checked; });
+
+  on('cfg-day', 'input', e => {
+    CFG.day = +e.target.value;
+    document.getElementById('lbl-day').textContent = dayLabel(CFG.day);
+    frameSun();
+    scheduleSunMap();
+  });
+  on('cfg-water', 'input', e => {                  // water changes no geometry
+    CFG.water = +e.target.value * 0.01;
+    document.getElementById('lbl-water').textContent = e.target.value + '%';
+    scheduleSunMap();
+  });
+
+  const chk = (id, key, fn) => on(id, 'change', e => { CFG[key] = e.target.checked; (fn || scheduleBuild)(0); });
+  chk('cfg-controlnet', 'controlNet');
+  chk('cfg-masts', 'masts');
+  chk('cfg-homes', 'homes');
+  // These three only change what is drawn from a map that is already computed.
+  const redraw = () => { if (sunmap) applySunMap(sunmap); };
+  chk('cfg-sunmap', 'sunmap', redraw);
+  chk('cfg-growth', 'growth', redraw);
+  chk('cfg-plants', 'plants', redraw);
+  chk('cfg-walls', 'wallPlants', scheduleSunMap);
+  on('cfg-shadows', 'change', e => {
+    CFG.shadows = e.target.checked;
+    renderer.shadowMap.enabled = CFG.shadows;
+    // Toggling the shadow map changes the shader defines, so every material
+    // has to be recompiled or shadows never come back.
+    Object.values(MAT).forEach(m => { m.needsUpdate = true; });
+    scheduleBuild(0);
+  });
+
+  on('v-over', 'click', () => view('over'));
+  on('v-top', 'click', () => view('top'));
+  on('v-street', 'click', () => view('street'));
+  on('btn-obj', 'click', exportOBJ);
+  on('btn-json', 'click', exportJSON);
+}
+
+// ---------------------------------------------------------------------------
+// Export
+// ---------------------------------------------------------------------------
+function download(name, text, type) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([text], { type: type || 'text/plain' }));
+  a.download = name; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+}
+
+function exportOBJ() {
+  const out = ['# Agrivoltaic canopy generator', '# units: feet, Y up'];
+  let base = 0;
+  const emit = (name, geo) => {
+    if (!geo || !geo.attributes || !geo.attributes.position) return;
+    out.push('o ' + name);
+    const p = geo.attributes.position;
+    for (let i = 0; i < p.count; i++) out.push(`v ${p.getX(i).toFixed(4)} ${p.getY(i).toFixed(4)} ${p.getZ(i).toFixed(4)}`);
+    const ix = geo.index ? geo.index.array : null;
+    if (ix) for (let i = 0; i < ix.length; i += 3)
+      out.push(`f ${base + ix[i] + 1} ${base + ix[i + 1] + 1} ${base + ix[i + 2] + 1}`);
+    base += p.count;
+  };
+  const mem = buildMembrane(surface);
+  emit('membrane', mem);
+  mem.dispose();
+  gPanels.children.forEach((m, i) => emit('panels' + i, m.geometry));
+  download('canopy.obj', out.join('\n'));
+  msg('Exported canopy.obj (' + base.toLocaleString() + ' vertices).');
+}
+
+function exportJSON() {
+  download('canopy.json', JSON.stringify({ config: CFG, nodes }, null, 2), 'application/json');
+  msg('Exported canopy.json.');
+}
+
+// ---------------------------------------------------------------------------
+let lastFrame = null;
+
+function animate() {
+  requestAnimationFrame(animate);
+  const now = performance.now();
+  // Clamped: a backgrounded tab resumes with a huge gap, which would teleport
+  // the sun rather than sweep it.
+  const dt = lastFrame === null ? 0 : Math.min(0.1, (now - lastFrame) / 1000);
+  lastFrame = now;
+  if (CFG.dayCycle && dt > 0) advanceDay(dt);
+  pumpSunMap();
+  controls.update();
+  renderer.render(scene, camera);
+}
+
+// Hooks used by the headless render tests in _scratch/.
+window.__setCam = p => { camera.position.set(p[0], p[1], p[2]); controls.update(); renderer.render(scene, camera); };
+window.__sunY = () => sun.position.y;
+window.__api = {
+  get CFG() { return CFG; }, get nodes() { return nodes; }, rebuild, view, addNode,
+  get surface() { return surface; }, get sunmap() { return sunmap; },
+  get scene() { return scene; }, get heat() { return gHeat; }, get plants() { return gPlants; },
+  get growth() { return gGrowth; }, get modules() { return gPanels; }, vigour,
+  get panelVerts() { return panelVerts; },
+  sites: SITES, flora: FLORA, solarPos, halfDay,
+};
+</script>
+</body>
+</html>

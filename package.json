@@ -1,0 +1,14 @@
+{
+  "name": "dappled-canopy",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Interactive sketch tool for a dappled agrivoltaic canopy over a desert neighbourhood",
+  "scripts": {
+    "test": "cd test && node suite.cjs",
+    "shots": "cd test && node shots.cjs ../media"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "playwright": "^1.62.1"
+  }
+}
