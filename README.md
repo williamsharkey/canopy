@@ -190,6 +190,13 @@ makes it cheap enough to redo on every parameter change.
 the full pass waits until the input settles. Work in flight is abandoned. The job is a
 generator pumped about 6 ms per frame from the render loop, so it never blocks a frame.
 
+## A fork
+
+**[canopy-siege](https://github.com/williamsharkey/canopy-siege)**
+([watch it](https://williamsharkey.github.io/canopy-siege/)) keeps all of this running
+and puts people in the town, then sends machines after them. Same array, same
+insolation model — except there the power budget also has to cover the lasers.
+
 ## Licence
 
 MIT — see `LICENSE`. `vendor/` contains [three.js](https://threejs.org),
